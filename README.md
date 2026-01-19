@@ -8,6 +8,7 @@ A deterministic, data-driven life simulator with a browser UI, CLI UI, and ASCII
 - Deterministic rule engine with a Conway rule set.
 - Data-driven definitions for terrain, flora, and fauna.
 - ASCII save/load format for file interchange and CLI rendering.
+- Soil effects from decomposition that enrich or poison growth.
 
 ## Quick start (web)
 Input:
@@ -68,12 +69,13 @@ Uses classic Conway rules for live/dead cells. Terrain and flora are ignored.
 Input (definitions):
 terrain: land, sea, sand, dirt
 flora: grass, tree
-fauna: herbivore, carnivore, conway
+fauna: herbivore, carnivore, sheep, wolf, conway
 
 Output (example usage):
 - Grass grows at a constant rate in the day based on terrain fertility.
 - Herbivores only eat flora types listed in their diet.
 - Shade reduces growth for nearby tiles.
+- Decomposition enriches soil for herbivores and poisons soil for carnivores.
 
 ## Tests
 Input:
