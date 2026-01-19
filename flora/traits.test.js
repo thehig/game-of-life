@@ -26,14 +26,15 @@ describe("flora traits", () => {
     const profile = createFlowerProfile({ budRate: 1, bloomThreshold: 2, nectarCap: 4 });
     const flower = createFlowerState();
     const sunny = advanceFlower(flower, { sunlight: 1, season: "spring" }, profile);
+    const blooming = advanceFlower(sunny, { sunlight: 1, season: "spring" }, profile);
     const pollinated = advanceFlower(
-      sunny,
+      blooming,
       { sunlight: 1, season: "spring", pollinatorVisits: 2 },
       profile
     );
 
-    expect(sunny.blooms).toBeGreaterThanOrEqual(1);
-    expect(pollinated.seeds).toBeGreaterThan(sunny.seeds);
+    expect(blooming.blooms).toBeGreaterThanOrEqual(1);
+    expect(pollinated.seeds).toBeGreaterThan(blooming.seeds);
     expect(pollinated.nectar).toBeLessThanOrEqual(profile.nectarCap);
   });
 
