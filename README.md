@@ -82,4 +82,4 @@ Input:
 C:\workspace> npm test
 
 Output:
-3 passed
+10 passed
