@@ -10,6 +10,23 @@ A deterministic, data-driven life simulator with a browser UI, CLI UI, and ASCII
 - ASCII save/load format for file interchange and CLI rendering.
 - Soil effects from decomposition that enrich or poison growth.
 
+## Config files (player content)
+Input:
+C:\workspace> notepad config\definitions.json
+C:\workspace> notepad config\timing.json
+
+Output:
+- Web UI loads config\definitions.json and config\timing.json on startup.
+- CLI loads the same files unless overridden by environment variables.
+
+Input (CLI override example):
+C:\workspace> set LIFE_DEFINITIONS=config\definitions.json
+C:\workspace> set LIFE_TIMING=config\timing.json
+C:\workspace> npm run start:cli
+
+Output:
+CLI starts with the edited definitions and timing.
+
 ## Quick start (web)
 Input:
 C:\workspace> npm install
@@ -66,7 +83,10 @@ Rules:
 Uses classic Conway rules for live/dead cells. Terrain and flora are ignored.
 
 ## Data-driven definitions
-Input (definitions):
+Input (file path):
+C:\workspace\config\definitions.json
+
+Output (example IDs):
 terrain: land, sea, sand, dirt
 flora: grass, tree
 fauna: herbivore, carnivore, sheep, wolf, conway
