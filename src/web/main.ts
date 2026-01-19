@@ -173,7 +173,11 @@ const setMode = (nextMode: Mode) => {
   }
   if (mode === "playing" && simulation) {
     timer = window.setInterval(() => {
-      simulation = stepSimulation(simulation);
+      const current = simulation;
+      if (!current) {
+        return;
+      }
+      simulation = stepSimulation(current);
       render();
     }, speedMs);
   }
