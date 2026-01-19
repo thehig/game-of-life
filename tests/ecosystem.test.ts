@@ -1,11 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   createEcosystemSimulation,
   createEmptyTile,
-  defaultDefinitions,
   stepSimulation
 } from "../src/engine/index.js";
 import { DefinitionSet, Tile } from "../src/engine/types.js";
+import { loadDefinitionsFixture } from "./helpers.js";
+
+let definitions: DefinitionSet;
+
+beforeAll(async () => {
+  definitions = await loadDefinitionsFixture();
+});
 
 const timingAlwaysDay = {
   dayLength: 1,
@@ -32,7 +38,7 @@ describe("ecosystem rules", () => {
   it("grows a tree over 100 cycles", () => {
     const initialGrowth = 0.1;
     const simulation = runSteps(
-      defaultDefinitions,
+      definitions,
       () => {
         const tile = createEmptyTile("land");
         tile.flora = {
@@ -52,12 +58,12 @@ describe("ecosystem rules", () => {
   });
 
   it("lets sheep eat grass on the same tile", () => {
-    const definitions: DefinitionSet = {
-      ...defaultDefinitions,
+    const customDefinitions: DefinitionSet = {
+      ...definitions,
       flora: {
-        ...defaultDefinitions.flora,
+        ...definitions.flora,
         grass: {
-          ...defaultDefinitions.flora.grass,
+          ...definitions.flora.grass,
           growthPerTick: 0,
           sunlightCost: 0
         }
@@ -65,7 +71,7 @@ describe("ecosystem rules", () => {
     };
 
     const simulation = runSteps(
-      definitions,
+      customDefinitions,
       () => {
         const tile = createEmptyTile("land");
         tile.flora = {
@@ -76,7 +82,7 @@ describe("ecosystem rules", () => {
         };
         tile.fauna = {
           id: "sheep",
-          health: definitions.fauna.sheep.maxHealth,
+          health: customDefinitions.fauna.sheep.maxHealth,
           hunger: 0.6,
           energy: 1,
           age: 0
@@ -95,14 +101,14 @@ describe("ecosystem rules", () => {
     let simulation = createEcosystemSimulation({
       width: 2,
       height: 1,
-      definitions: defaultDefinitions,
+      definitions,
       timing: timingAlwaysDay,
       tileFactory: (x) => {
         const tile = createEmptyTile("land");
         if (x === 0) {
           tile.fauna = {
             id: "wolf",
-            health: defaultDefinitions.fauna.wolf.maxHealth,
+            health: definitions.fauna.wolf.maxHealth,
             hunger: 0.7,
             energy: 1,
             age: 0
@@ -111,7 +117,7 @@ describe("ecosystem rules", () => {
         if (x === 1) {
           tile.fauna = {
             id: "sheep",
-            health: defaultDefinitions.fauna.sheep.maxHealth,
+            health: definitions.fauna.sheep.maxHealth,
             hunger: 0.2,
             energy: 1,
             age: 0
@@ -133,7 +139,7 @@ describe("ecosystem rules", () => {
 
   it("kills fauna by starvation when hunger is maxed", () => {
     const simulation = runSteps(
-      defaultDefinitions,
+      definitions,
       () => {
         const tile = createEmptyTile("land");
         tile.fauna = {
@@ -154,7 +160,7 @@ describe("ecosystem rules", () => {
 
   it("enriches soil after herbivore death and boosts growth", () => {
     const base = runSteps(
-      defaultDefinitions,
+      definitions,
       () => {
         const tile = createEmptyTile("land");
         tile.flora = {
@@ -171,7 +177,7 @@ describe("ecosystem rules", () => {
     let withSheep = createEcosystemSimulation({
       width: 1,
       height: 1,
-      definitions: defaultDefinitions,
+      definitions,
       timing: timingAlwaysDay,
       tileFactory: () => {
         const tile = createEmptyTile("land");
@@ -205,7 +211,7 @@ describe("ecosystem rules", () => {
 
   it("poisons soil after carnivore death and slows growth", () => {
     const base = runSteps(
-      defaultDefinitions,
+      definitions,
       () => {
         const tile = createEmptyTile("land");
         tile.flora = {
@@ -222,7 +228,7 @@ describe("ecosystem rules", () => {
     let withWolf = createEcosystemSimulation({
       width: 1,
       height: 1,
-      definitions: defaultDefinitions,
+      definitions,
       timing: timingAlwaysDay,
       tileFactory: () => {
         const tile = createEmptyTile("land");

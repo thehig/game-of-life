@@ -4,14 +4,17 @@ import {
   inspectTile,
   stepSimulation
 } from "../engine/index.js";
+import { loadDefinitionsFromUrl, loadTimingFromUrl } from "./config.js";
 
 type Mode = "paused" | "playing";
 
 const cellSize = 18;
 const worldWidth = 32;
 const worldHeight = 18;
+const definitionsUrl = "./config/definitions.json";
+const timingUrl = "./config/timing.json";
 
-let simulation = createDemoSimulation(worldWidth, worldHeight);
+let simulation: ReturnType<typeof createDemoSimulation> | undefined;
 let mode: Mode = "paused";
 let speedMs = 600;
 let selected = { x: 2, y: 2 };
@@ -50,9 +53,9 @@ const stepButton = getElement<HTMLButtonElement>("step");
 const fastButton = getElement<HTMLButtonElement>("fast");
 const slowButton = getElement<HTMLButtonElement>("slow");
 
-const resizeCanvas = () => {
-  canvas.width = simulation.world.width * cellSize;
-  canvas.height = simulation.world.height * cellSize;
+const resizeCanvas = (width: number, height: number) => {
+  canvas.width = width * cellSize;
+  canvas.height = height * cellSize;
 };
 
 const toRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -78,8 +81,11 @@ const adjustColor = (hex: string, factor: number): string => {
 };
 
 const getTileColor = (x: number, y: number): string => {
+  if (!simulation) {
+    return "#1b1f2a";
+  }
   const tile = simulation.world.tiles[y * simulation.world.width + x];
-  let color = simulation.definitions.terrains[tile.terrainId].color;
+  let color = simulation.definitions.terrains[tile.terrainId]?.color ?? "#1b1f2a";
 
   if (tile.flora) {
     const floraDef = simulation.definitions.flora[tile.flora.id];
@@ -100,6 +106,9 @@ const getTileColor = (x: number, y: number): string => {
 
 const renderWorld = () => {
   context.clearRect(0, 0, canvas.width, canvas.height);
+  if (!simulation) {
+    return;
+  }
 
   for (let y = 0; y < simulation.world.height; y += 1) {
     for (let x = 0; x < simulation.world.width; x += 1) {
@@ -121,6 +130,9 @@ const renderWorld = () => {
 };
 
 const renderPanel = () => {
+  if (!simulation) {
+    return;
+  }
   const details = inspectTile(simulation, selected.x, selected.y);
   const time = getSimulationTime(simulation.world.tick, simulation.timing);
 
@@ -151,7 +163,7 @@ const setMode = (nextMode: Mode) => {
     window.clearInterval(timer);
     timer = undefined;
   }
-  if (mode === "playing") {
+  if (mode === "playing" && simulation) {
     timer = window.setInterval(() => {
       simulation = stepSimulation(simulation);
       render();
@@ -160,6 +172,9 @@ const setMode = (nextMode: Mode) => {
 };
 
 const stepOnce = () => {
+  if (!simulation) {
+    return;
+  }
   simulation = stepSimulation(simulation);
   render();
 };
@@ -173,6 +188,9 @@ const updateSpeed = (delta: number) => {
 };
 
 const selectTileFromEvent = (event: MouseEvent) => {
+  if (!simulation) {
+    return;
+  }
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
@@ -194,5 +212,16 @@ fastButton.addEventListener("click", () => updateSpeed(-150));
 slowButton.addEventListener("click", () => updateSpeed(150));
 canvas.addEventListener("click", selectTileFromEvent);
 
-resizeCanvas();
-render();
+const bootstrap = async () => {
+  const [definitions, timing] = await Promise.all([
+    loadDefinitionsFromUrl(definitionsUrl),
+    loadTimingFromUrl(timingUrl)
+  ]);
+  simulation = createDemoSimulation(worldWidth, worldHeight, definitions, timing);
+  resizeCanvas(simulation.world.width, simulation.world.height);
+  render();
+};
+
+bootstrap().catch((error) => {
+  console.error(error);
+});

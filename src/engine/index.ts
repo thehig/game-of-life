@@ -5,7 +5,7 @@ export {
   stepSimulation
 } from "./engine.js";
 export { createDemoSimulation } from "./demo.js";
-export { defaultDefinitions, defaultTiming } from "./definitions.js";
+export { parseDefinitions, parseTiming } from "./config.js";
 export { inspectTile } from "./inspect.js";
 export { renderAscii, parseAscii } from "./serialize.js";
 export { getSimulationTime } from "./time.js";

@@ -1,8 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createDemoSimulation, renderAscii, stepSimulation } from "../src/engine/index.js";
+import { DefinitionSet, SimulationTiming } from "../src/engine/types.js";
+import { loadDefinitionsFixture, loadTimingFixture } from "./helpers.js";
+
+let definitions: DefinitionSet;
+let timing: SimulationTiming;
+
+beforeAll(async () => {
+  definitions = await loadDefinitionsFixture();
+  timing = await loadTimingFixture();
+});
 
 const runSteps = (steps: number) => {
-  let simulation = createDemoSimulation(16, 10);
+  let simulation = createDemoSimulation(16, 10, definitions, timing);
   for (let i = 0; i < steps; i += 1) {
     simulation = stepSimulation(simulation);
   }

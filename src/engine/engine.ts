@@ -1,6 +1,5 @@
 import { conwayRules } from "./rules/conway.js";
 import { ecosystemRules } from "./rules/ecosystem.js";
-import { defaultDefinitions, defaultTiming } from "./definitions.js";
 import { getSimulationTime } from "./time.js";
 import {
   DefinitionSet,
@@ -16,24 +15,22 @@ import { createWorld } from "./world.js";
 export type SimulationOptions = {
   width: number;
   height: number;
+  definitions: DefinitionSet;
+  timing: SimulationTiming;
   terrainId?: TerrainId;
-  definitions?: DefinitionSet;
-  timing?: SimulationTiming;
   ruleset?: RuleSet;
   tileFactory?: (x: number, y: number) => Tile;
 };
 
 export const createSimulation = (options: SimulationOptions): Simulation => {
-  const definitions = options.definitions ?? defaultDefinitions;
-  const timing = options.timing ?? defaultTiming;
   const ruleset = options.ruleset ?? ecosystemRules;
   const terrainId = options.terrainId ?? "land";
   const world = createWorld(options.width, options.height, terrainId, options.tileFactory);
 
   return {
     world,
-    definitions,
-    timing,
+    definitions: options.definitions,
+    timing: options.timing,
     ruleset
   };
 };

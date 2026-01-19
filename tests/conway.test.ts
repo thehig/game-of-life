@@ -1,11 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   createConwaySimulation,
   createEmptyTile,
   renderAscii,
   stepSimulation
 } from "../src/engine/index.js";
-import { Tile } from "../src/engine/types.js";
+import { DefinitionSet, SimulationTiming, Tile } from "../src/engine/types.js";
+import { loadDefinitionsFixture, loadTimingFixture } from "./helpers.js";
+
+let definitions: DefinitionSet;
+let timing: SimulationTiming;
+
+beforeAll(async () => {
+  definitions = await loadDefinitionsFixture();
+  timing = await loadTimingFixture();
+});
 
 const createBlinker = () => {
   const live = new Set([2 + 1 * 5, 2 + 2 * 5, 2 + 3 * 5]);
@@ -13,6 +22,8 @@ const createBlinker = () => {
     width: 5,
     height: 5,
     terrainId: "land",
+    definitions,
+    timing,
     tileFactory: (x, y): Tile => {
       const tile = createEmptyTile("land");
       if (live.has(x + y * 5)) {
@@ -65,6 +76,8 @@ describe("conway rules", () => {
       width,
       height,
       terrainId: "land",
+    definitions,
+    timing,
       tileFactory: (x, y): Tile => {
         const tile = createEmptyTile("land");
         if (live.has(x + y * width)) {

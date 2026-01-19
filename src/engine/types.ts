@@ -1,6 +1,6 @@
-export type TerrainId = "land" | "sea" | "sand" | "dirt";
-export type FloraId = "grass" | "tree";
-export type FaunaId = "herbivore" | "carnivore" | "sheep" | "wolf" | "conway";
+export type TerrainId = string;
+export type FloraId = string;
+export type FaunaId = string;
 export type RuleSetId = "ecosystem" | "conway";
 export type DietType = "herbivore" | "carnivore" | "omnivore";
 

@@ -1,13 +1,19 @@
 import { createEcosystemSimulation } from "./engine.js";
-import { defaultDefinitions } from "./definitions.js";
-import { Tile } from "./types.js";
+import { DefinitionSet, SimulationTiming, Tile } from "./types.js";
 import { createEmptyTile } from "./world.js";
 
-export const createDemoSimulation = (width: number, height: number) => {
+export const createDemoSimulation = (
+  width: number,
+  height: number,
+  definitions: DefinitionSet,
+  timing: SimulationTiming
+) => {
   return createEcosystemSimulation({
     width,
     height,
     terrainId: "land",
+    definitions,
+    timing,
     tileFactory: (x, y): Tile => {
       const terrainId = (x + y) % 11 === 0 ? "sand" : "land";
       const tile = createEmptyTile(terrainId);
@@ -24,7 +30,7 @@ export const createDemoSimulation = (width: number, height: number) => {
       if (x === Math.floor(width / 2) && y === Math.floor(height / 2)) {
         tile.flora = {
           id: "tree",
-          nutrition: defaultDefinitions.flora.tree.maxNutrition,
+          nutrition: definitions.flora.tree?.maxNutrition ?? 1,
           age: 5,
           growth: 0.6
         };
@@ -33,7 +39,7 @@ export const createDemoSimulation = (width: number, height: number) => {
       if (x === 2 && y === 2) {
         tile.fauna = {
           id: "herbivore",
-          health: defaultDefinitions.fauna.herbivore.maxHealth,
+          health: definitions.fauna.herbivore?.maxHealth ?? 10,
           hunger: 0.2,
           energy: 1,
           age: 0
@@ -43,7 +49,7 @@ export const createDemoSimulation = (width: number, height: number) => {
       if (x === width - 3 && y === height - 3) {
         tile.fauna = {
           id: "carnivore",
-          health: defaultDefinitions.fauna.carnivore.maxHealth,
+          health: definitions.fauna.carnivore?.maxHealth ?? 12,
           hunger: 0.1,
           energy: 1,
           age: 0

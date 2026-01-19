@@ -98,8 +98,19 @@ const updateFaunaVitals = (
   };
 };
 
-const scoreHerbivoreTarget = (tile: Tile, floraDef?: FloraDefinition): number => {
-  if (!tile.flora || tile.flora.id !== "grass" || !floraDef) {
+const scoreHerbivoreTarget = (
+  tile: Tile,
+  faunaDef: FaunaDefinition,
+  definitions: DefinitionSet
+): number => {
+  if (!tile.flora) {
+    return 0;
+  }
+  const floraDef = definitions.flora[tile.flora.id];
+  if (!floraDef) {
+    return 0;
+  }
+  if (!floraDef.edibleBy.includes(faunaDef.diet)) {
     return 0;
   }
   return tile.flora.nutrition;
@@ -109,7 +120,11 @@ const scoreCarnivoreTarget = (tile: Tile, definitions: DefinitionSet): number =>
   if (!tile.fauna) {
     return 0;
   }
-  const diet = definitions.fauna[tile.fauna.id].diet;
+  const preyDef = definitions.fauna[tile.fauna.id];
+  if (!preyDef) {
+    return 0;
+  }
+  const diet = preyDef.diet;
   if (diet === "herbivore") {
     return 2;
   }
@@ -156,7 +171,7 @@ const selectDestination = (
 
     let score = 0;
     if (faunaDef.diet === "herbivore") {
-      score = scoreHerbivoreTarget(tile, definitions.flora.grass);
+      score = scoreHerbivoreTarget(tile, faunaDef, definitions);
     } else if (faunaDef.diet === "carnivore") {
       score = scoreCarnivoreTarget(tile, definitions);
     }
@@ -235,20 +250,22 @@ const applyFaunaToTile = (
     }
   }
 
-  if (faunaDef.diet === "herbivore" && updatedTile.flora?.id === "grass") {
-    const floraDef = definitions.flora.grass;
-    const eatAmount = Math.min(updatedTile.flora.nutrition, faunaDef.eatRate);
-    updatedTile = {
-      ...updatedTile,
-      flora: {
-        ...updatedTile.flora,
-        nutrition: clamp(updatedTile.flora.nutrition - eatAmount, 0, floraDef.maxNutrition)
-      }
-    };
-    updatedFauna = {
-      ...updatedFauna,
-      hunger: clamp(updatedFauna.hunger - eatAmount, 0, 1)
-    };
+  if (faunaDef.diet === "herbivore" && updatedTile.flora) {
+    const floraDef = definitions.flora[updatedTile.flora.id];
+    if (floraDef && floraDef.edibleBy.includes(faunaDef.diet)) {
+      const eatAmount = Math.min(updatedTile.flora.nutrition, faunaDef.eatRate);
+      updatedTile = {
+        ...updatedTile,
+        flora: {
+          ...updatedTile.flora,
+          nutrition: clamp(updatedTile.flora.nutrition - eatAmount, 0, floraDef.maxNutrition)
+        }
+      };
+      updatedFauna = {
+        ...updatedFauna,
+        hunger: clamp(updatedFauna.hunger - eatAmount, 0, 1)
+      };
+    }
   }
 
   if (faunaDef.diet === "carnivore" && didEat) {
@@ -276,11 +293,14 @@ const applyShade = (world: World, definitions: DefinitionSet): World => {
     for (let x = 0; x < world.width; x += 1) {
       const index = getIndex(world, x, y);
       const tile = world.tiles[index];
-      if (!tile.flora || tile.flora.id !== "tree") {
+      if (!tile.flora) {
         continue;
       }
 
-      const floraDef = definitions.flora.tree;
+      const floraDef = definitions.flora[tile.flora.id];
+      if (!floraDef || floraDef.shadeRadius <= 0) {
+        continue;
+      }
       const radius = Math.max(1, Math.round(floraDef.shadeRadius * tile.flora.growth));
       const growth = clamp(tile.flora.growth, 0, 1);
 
@@ -329,16 +349,14 @@ export const ecosystemRules: RuleSet = {
         const tile = world.tiles[index];
         const terrain = context.definitions.terrains[tile.terrainId];
         const soil = decaySoil(tile.soil);
-        const flora = tile.flora
-          ? updateFloraState(
-              tile.flora,
-              context.definitions.flora[tile.flora.id],
-              terrain.fertility,
-              tile.shade,
-              isDay,
-              soil
-            )
-          : undefined;
+        let flora: FloraState | undefined;
+        if (tile.flora) {
+          const floraDef = context.definitions.flora[tile.flora.id];
+          if (!floraDef) {
+            throw new Error(`Missing flora definition: ${tile.flora.id}`);
+          }
+          flora = updateFloraState(tile.flora, floraDef, terrain.fertility, tile.shade, isDay, soil);
+        }
 
         nextTiles.push({
           terrainId: tile.terrainId,
@@ -362,6 +380,9 @@ export const ecosystemRules: RuleSet = {
         }
 
         const faunaDef = context.definitions.fauna[tile.fauna.id];
+        if (!faunaDef) {
+          throw new Error(`Missing fauna definition: ${tile.fauna.id}`);
+        }
         const updated = updateFaunaVitals(tile.fauna, faunaDef);
         if (!updated) {
           const target = nextTiles[index];
