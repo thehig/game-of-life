@@ -5,7 +5,7 @@ import {
   stepSimulation
 } from "../src/engine/index.js";
 import { DefinitionSet, Tile } from "../src/engine/types.js";
-import { loadDefinitionsFixture } from "./helpers.js";
+import { getFaunaDef, getFloraDef, loadDefinitionsFixture } from "./helpers.js";
 
 let definitions: DefinitionSet;
 
@@ -58,12 +58,13 @@ describe("ecosystem rules", () => {
   });
 
   it("lets sheep eat grass on the same tile", () => {
+    const grassDef = getFloraDef(definitions, "grass");
     const customDefinitions: DefinitionSet = {
       ...definitions,
       flora: {
         ...definitions.flora,
         grass: {
-          ...definitions.flora.grass,
+          ...grassDef,
           growthPerTick: 0,
           sunlightCost: 0
         }
@@ -80,9 +81,10 @@ describe("ecosystem rules", () => {
           age: 0,
           growth: 0.2
         };
+        const sheepDef = getFaunaDef(customDefinitions, "sheep");
         tile.fauna = {
           id: "sheep",
-          health: customDefinitions.fauna.sheep.maxHealth,
+          health: sheepDef.maxHealth,
           hunger: 0.6,
           energy: 1,
           age: 0
@@ -106,18 +108,20 @@ describe("ecosystem rules", () => {
       tileFactory: (x) => {
         const tile = createEmptyTile("land");
         if (x === 0) {
+          const wolfDef = getFaunaDef(definitions, "wolf");
           tile.fauna = {
             id: "wolf",
-            health: definitions.fauna.wolf.maxHealth,
+            health: wolfDef.maxHealth,
             hunger: 0.7,
             energy: 1,
             age: 0
           };
         }
         if (x === 1) {
+          const sheepDef = getFaunaDef(definitions, "sheep");
           tile.fauna = {
             id: "sheep",
-            health: definitions.fauna.sheep.maxHealth,
+            health: sheepDef.maxHealth,
             hunger: 0.2,
             energy: 1,
             age: 0

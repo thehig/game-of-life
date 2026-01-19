@@ -10,23 +10,38 @@ export const inspectTile = (simulation: Simulation, x: number, y: number): TileD
   const tile = getTile(simulation.world, x, y);
   const time = getSimulationTime(simulation.world.tick, simulation.timing);
   const terrain = simulation.definitions.terrains[tile.terrainId];
+  if (!terrain) {
+    throw new Error(`Missing terrain definition: ${tile.terrainId}`);
+  }
 
-  return {
+  const details: TileDetails = {
     position: { x, y },
     terrain,
     shade: tile.shade,
-    time,
-    flora: tile.flora
-      ? {
-          definition: simulation.definitions.flora[tile.flora.id],
-          state: tile.flora
-        }
-      : undefined,
-    fauna: tile.fauna
-      ? {
-          definition: simulation.definitions.fauna[tile.fauna.id],
-          state: tile.fauna
-        }
-      : undefined
+    time
   };
+
+  if (tile.flora) {
+    const floraDef = simulation.definitions.flora[tile.flora.id];
+    if (!floraDef) {
+      throw new Error(`Missing flora definition: ${tile.flora.id}`);
+    }
+    details.flora = {
+      definition: floraDef,
+      state: tile.flora
+    };
+  }
+
+  if (tile.fauna) {
+    const faunaDef = simulation.definitions.fauna[tile.fauna.id];
+    if (!faunaDef) {
+      throw new Error(`Missing fauna definition: ${tile.fauna.id}`);
+    }
+    details.fauna = {
+      definition: faunaDef,
+      state: tile.fauna
+    };
+  }
+
+  return details;
 };

@@ -43,35 +43,45 @@ export const isInBounds = (world: World, x: number, y: number): boolean =>
   x >= 0 && x < world.width && y >= 0 && y < world.height;
 
 export const getTile = (world: World, x: number, y: number): Tile => {
-  return world.tiles[getIndex(world, x, y)];
+  const tile = world.tiles[getIndex(world, x, y)];
+  if (!tile) {
+    throw new Error(`Missing tile at (${x}, ${y})`);
+  }
+  return tile;
 };
 
 export const cloneWorld = (world: World): World => ({
   width: world.width,
   height: world.height,
   tick: world.tick,
-  tiles: world.tiles.map((tile) => ({
-    terrainId: tile.terrainId,
-    shade: tile.shade,
-    soil: tile.soil ?? createEmptySoil(),
-    flora: tile.flora
-      ? {
-          id: tile.flora.id,
-          nutrition: tile.flora.nutrition,
-          age: tile.flora.age,
-          growth: tile.flora.growth
-        }
-      : undefined,
-    fauna: tile.fauna
-      ? {
-          id: tile.fauna.id,
-          health: tile.fauna.health,
-          hunger: tile.fauna.hunger,
-          energy: tile.fauna.energy,
-          age: tile.fauna.age
-        }
-      : undefined
-  }))
+  tiles: world.tiles.map((tile) => {
+    const next: Tile = {
+      terrainId: tile.terrainId,
+      shade: tile.shade,
+      soil: tile.soil ?? createEmptySoil()
+    };
+
+    if (tile.flora) {
+      next.flora = {
+        id: tile.flora.id,
+        nutrition: tile.flora.nutrition,
+        age: tile.flora.age,
+        growth: tile.flora.growth
+      };
+    }
+
+    if (tile.fauna) {
+      next.fauna = {
+        id: tile.fauna.id,
+        health: tile.fauna.health,
+        hunger: tile.fauna.hunger,
+        energy: tile.fauna.energy,
+        age: tile.fauna.age
+      };
+    }
+
+    return next;
+  })
 });
 
 export const replaceTile = (world: World, x: number, y: number, tile: Tile): World => {

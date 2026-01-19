@@ -72,7 +72,7 @@ const requireDietArray = (record: RecordValue, key: string, context: string): Di
 };
 
 const ensureIdMatchesKey = (record: RecordValue, key: string, context: string): void => {
-  if (record.id === undefined) {
+  if (record["id"] === undefined) {
     return;
   }
   const idValue = requireString(record, "id", context);
@@ -151,9 +151,9 @@ export const parseDefinitions = (data: unknown): DefinitionSet => {
   const root = requireRecord(data, "definitions");
 
   return {
-    terrains: parseDefinitionMap(root.terrains, "terrains", parseTerrain),
-    flora: parseDefinitionMap(root.flora, "flora", parseFlora),
-    fauna: parseDefinitionMap(root.fauna, "fauna", parseFauna)
+    terrains: parseDefinitionMap(root["terrains"], "terrains", parseTerrain),
+    flora: parseDefinitionMap(root["flora"], "flora", parseFlora),
+    fauna: parseDefinitionMap(root["fauna"], "fauna", parseFauna)
   };
 };
 

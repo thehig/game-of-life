@@ -164,7 +164,13 @@ const selectDestination = (
       continue;
     }
     const tile = world.tiles[getIndex(world, x, y)];
+    if (!tile) {
+      throw new Error(`Missing tile at (${x}, ${y})`);
+    }
     const terrain = definitions.terrains[tile.terrainId];
+    if (!terrain) {
+      throw new Error(`Missing terrain definition: ${tile.terrainId}`);
+    }
     if (!terrain.passable) {
       continue;
     }
@@ -211,10 +217,13 @@ const resolveIntents = (
     });
 
     const winner = sorted[0];
+    if (!winner) {
+      continue;
+    }
     const didEat =
       winner.faunaDef.diet === "carnivore" &&
       sorted.slice(1).some((intent) => {
-        const diet = definitions.fauna[intent.fauna.id].diet;
+        const diet = definitions.fauna[intent.fauna.id]?.diet;
         return diet === "herbivore" || diet === "carnivore";
       });
 
@@ -239,6 +248,9 @@ const applyFaunaToTile = (
 
   if (updatedTile.flora) {
     const floraDef = definitions.flora[updatedTile.flora.id];
+    if (!floraDef) {
+      throw new Error(`Missing flora definition: ${updatedTile.flora.id}`);
+    }
     if (floraDef.trampleLoss > 0) {
       updatedTile = {
         ...updatedTile,
@@ -252,7 +264,10 @@ const applyFaunaToTile = (
 
   if (faunaDef.diet === "herbivore" && updatedTile.flora) {
     const floraDef = definitions.flora[updatedTile.flora.id];
-    if (floraDef && floraDef.edibleBy.includes(faunaDef.diet)) {
+    if (!floraDef) {
+      throw new Error(`Missing flora definition: ${updatedTile.flora.id}`);
+    }
+    if (floraDef.edibleBy.includes(faunaDef.diet)) {
       const eatAmount = Math.min(updatedTile.flora.nutrition, faunaDef.eatRate);
       updatedTile = {
         ...updatedTile,
@@ -293,6 +308,9 @@ const applyShade = (world: World, definitions: DefinitionSet): World => {
     for (let x = 0; x < world.width; x += 1) {
       const index = getIndex(world, x, y);
       const tile = world.tiles[index];
+      if (!tile) {
+        throw new Error(`Missing tile at (${x}, ${y})`);
+      }
       if (!tile.flora) {
         continue;
       }
@@ -318,6 +336,9 @@ const applyShade = (world: World, definitions: DefinitionSet): World => {
           const shadeValue = clamp(growth * (1 - distance / (radius + 1)), 0, 1);
           const targetIndex = getIndex(world, nx, ny);
           const target = tiles[targetIndex];
+          if (!target) {
+            throw new Error(`Missing tile at (${nx}, ${ny})`);
+          }
 
           if (shadeValue > target.shade) {
             tiles[targetIndex] = {
@@ -347,7 +368,13 @@ export const ecosystemRules: RuleSet = {
       for (let x = 0; x < world.width; x += 1) {
         const index = getIndex(world, x, y);
         const tile = world.tiles[index];
+        if (!tile) {
+          throw new Error(`Missing tile at (${x}, ${y})`);
+        }
         const terrain = context.definitions.terrains[tile.terrainId];
+        if (!terrain) {
+          throw new Error(`Missing terrain definition: ${tile.terrainId}`);
+        }
         const soil = decaySoil(tile.soil);
         let flora: FloraState | undefined;
         if (tile.flora) {
@@ -358,13 +385,15 @@ export const ecosystemRules: RuleSet = {
           flora = updateFloraState(tile.flora, floraDef, terrain.fertility, tile.shade, isDay, soil);
         }
 
-        nextTiles.push({
+        const nextTile: Tile = {
           terrainId: tile.terrainId,
-          flora,
-          fauna: undefined,
           shade: 0,
           soil
-        });
+        };
+        if (flora) {
+          nextTile.flora = flora;
+        }
+        nextTiles.push(nextTile);
       }
     }
 
@@ -374,6 +403,9 @@ export const ecosystemRules: RuleSet = {
       for (let x = 0; x < world.width; x += 1) {
         const index = getIndex(world, x, y);
         const tile = world.tiles[index];
+        if (!tile) {
+          throw new Error(`Missing tile at (${x}, ${y})`);
+        }
 
         if (!tile.fauna) {
           continue;
@@ -386,6 +418,9 @@ export const ecosystemRules: RuleSet = {
         const updated = updateFaunaVitals(tile.fauna, faunaDef);
         if (!updated) {
           const target = nextTiles[index];
+          if (!target) {
+            throw new Error(`Missing tile at (${x}, ${y})`);
+          }
           nextTiles[index] = {
             ...target,
             soil: applyDecomposition(target.soil, faunaDef)
@@ -412,6 +447,9 @@ export const ecosystemRules: RuleSet = {
     for (const [destIndex, resolution] of resolved.entries()) {
       const { intent } = resolution;
       const tile = nextTiles[destIndex];
+      if (!tile) {
+        throw new Error(`Missing tile at index ${destIndex}`);
+      }
       const applied = applyFaunaToTile(tile, intent.fauna, intent.faunaDef, resolution.didEat, context.definitions);
       nextTiles[destIndex] = applied.tile;
       occupied.add(destIndex);
@@ -426,6 +464,9 @@ export const ecosystemRules: RuleSet = {
         continue;
       }
       const tile = nextTiles[intent.sourceIndex];
+      if (!tile) {
+        throw new Error(`Missing tile at index ${intent.sourceIndex}`);
+      }
       const applied = applyFaunaToTile(tile, intent.fauna, intent.faunaDef, false, context.definitions);
       nextTiles[intent.sourceIndex] = applied.tile;
       occupied.add(intent.sourceIndex);

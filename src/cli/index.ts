@@ -6,8 +6,8 @@ type Mode = "paused" | "playing";
 
 const width = 24;
 const height = 14;
-const definitionsPath = process.env.LIFE_DEFINITIONS ?? "config/definitions.json";
-const timingPath = process.env.LIFE_TIMING ?? "config/timing.json";
+const definitionsPath = process.env["LIFE_DEFINITIONS"] ?? "config/definitions.json";
+const timingPath = process.env["LIFE_TIMING"] ?? "config/timing.json";
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));

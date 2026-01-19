@@ -85,16 +85,24 @@ const getTileColor = (x: number, y: number): string => {
     return "#1b1f2a";
   }
   const tile = simulation.world.tiles[y * simulation.world.width + x];
+  if (!tile) {
+    return "#1b1f2a";
+  }
   let color = simulation.definitions.terrains[tile.terrainId]?.color ?? "#1b1f2a";
 
   if (tile.flora) {
     const floraDef = simulation.definitions.flora[tile.flora.id];
-    const growthFactor = 0.7 + tile.flora.growth * 0.6;
-    color = adjustColor(floraDef.color, growthFactor);
+    if (floraDef) {
+      const growthFactor = 0.7 + tile.flora.growth * 0.6;
+      color = adjustColor(floraDef.color, growthFactor);
+    }
   }
 
   if (tile.fauna) {
-    color = simulation.definitions.fauna[tile.fauna.id].color;
+    const faunaDef = simulation.definitions.fauna[tile.fauna.id];
+    if (faunaDef) {
+      color = faunaDef.color;
+    }
   }
 
   if (tile.shade > 0) {
@@ -165,7 +173,11 @@ const setMode = (nextMode: Mode) => {
   }
   if (mode === "playing" && simulation) {
     timer = window.setInterval(() => {
-      simulation = stepSimulation(simulation);
+      const current = simulation;
+      if (!current) {
+        return;
+      }
+      simulation = stepSimulation(current);
       render();
     }, speedMs);
   }

@@ -25,12 +25,27 @@ export const renderAscii = (world: World, definitions: DefinitionSet): string =>
     let line = "";
     for (let x = 0; x < world.width; x += 1) {
       const tile = world.tiles[getIndex(world, x, y)];
+      if (!tile) {
+        throw new Error(`Missing tile at (${x}, ${y})`);
+      }
       if (tile.fauna) {
-        line += definitions.fauna[tile.fauna.id].ascii;
+        const faunaDef = definitions.fauna[tile.fauna.id];
+        if (!faunaDef) {
+          throw new Error(`Missing fauna definition: ${tile.fauna.id}`);
+        }
+        line += faunaDef.ascii;
       } else if (tile.flora) {
-        line += definitions.flora[tile.flora.id].ascii;
+        const floraDef = definitions.flora[tile.flora.id];
+        if (!floraDef) {
+          throw new Error(`Missing flora definition: ${tile.flora.id}`);
+        }
+        line += floraDef.ascii;
       } else {
-        line += definitions.terrains[tile.terrainId].ascii;
+        const terrainDef = definitions.terrains[tile.terrainId];
+        if (!terrainDef) {
+          throw new Error(`Missing terrain definition: ${tile.terrainId}`);
+        }
+        line += terrainDef.ascii;
       }
     }
     lines.push(line);
@@ -48,6 +63,10 @@ export const parseAscii = (
   const floraMap = buildAsciiMap<FloraId>(definitions.flora);
   const terrainMap = buildAsciiMap<TerrainId>(definitions.terrains);
   const lines = input.replace(/\r/g, "").split("\n").filter((line) => line.length > 0);
+  const fallbackDef = definitions.terrains[fallbackTerrain];
+  if (!fallbackDef) {
+    throw new Error(`Missing terrain definition: ${fallbackTerrain}`);
+  }
 
   const width = Math.max(0, ...lines.map((line) => line.length));
   const height = lines.length;
@@ -56,15 +75,18 @@ export const parseAscii = (
   const tiles: Tile[] = [];
 
   for (let y = 0; y < height; y += 1) {
-    const line = lines[y];
+    const line = lines[y] ?? "";
     for (let x = 0; x < width; x += 1) {
-      const char = line[x] ?? definitions.terrains[fallbackTerrain].ascii;
+      const char = line[x] ?? fallbackDef.ascii;
       const faunaId = faunaMap.get(char);
       const floraId = floraMap.get(char);
       const terrainId = terrainMap.get(char);
 
       if (faunaId) {
         const faunaDef = definitions.fauna[faunaId];
+        if (!faunaDef) {
+          throw new Error(`Missing fauna definition: ${faunaId}`);
+        }
         const base = createEmptyTile(fallbackTerrain);
         tiles.push({
           ...base,
@@ -78,6 +100,9 @@ export const parseAscii = (
         });
       } else if (floraId) {
         const floraDef = definitions.flora[floraId];
+        if (!floraDef) {
+          throw new Error(`Missing flora definition: ${floraId}`);
+        }
         const base = createEmptyTile(fallbackTerrain);
         tiles.push({
           ...base,

@@ -21,7 +21,7 @@ const countLiveNeighbors = (world: World, x: number, y: number): number => {
       continue;
     }
     const neighbor = world.tiles[getIndex(world, nx, ny)];
-    if (neighbor.fauna?.id === "conway") {
+    if (neighbor && neighbor.fauna?.id === "conway") {
       count += 1;
     }
   }
@@ -38,25 +38,33 @@ export const conwayRules: RuleSet = {
       for (let x = 0; x < world.width; x += 1) {
         const index = getIndex(world, x, y);
         const tile = world.tiles[index];
+        if (!tile) {
+          throw new Error(`Missing tile at (${x}, ${y})`);
+        }
         const liveNeighbors = countLiveNeighbors(world, x, y);
         const isAlive = tile.fauna?.id === "conway";
         const nextAlive = liveNeighbors === 3 || (isAlive && liveNeighbors === 2);
-
-        tiles.push({
+        const nextTile: Tile = {
           terrainId: tile.terrainId,
-          flora: tile.flora ? { ...tile.flora } : undefined,
           shade: tile.shade,
-          soil: tile.soil,
-          fauna: nextAlive
-            ? {
-                id: "conway",
-                health: 1,
-                hunger: 0,
-                energy: 0,
-                age: isAlive ? (tile.fauna?.age ?? 0) + 1 : 0
-              }
-            : undefined
-        });
+          soil: tile.soil
+        };
+
+        if (tile.flora) {
+          nextTile.flora = { ...tile.flora };
+        }
+
+        if (nextAlive) {
+          nextTile.fauna = {
+            id: "conway",
+            health: 1,
+            hunger: 0,
+            energy: 0,
+            age: isAlive ? (tile.fauna?.age ?? 0) + 1 : 0
+          };
+        }
+
+        tiles.push(nextTile);
       }
     }
 
