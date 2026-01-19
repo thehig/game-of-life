@@ -38,6 +38,13 @@ Serving dist/web on http://localhost:5173
 
 Then open the URL in your browser.
 
+## GitHub Pages deployment
+Input:
+C:\workspace> git push origin main
+
+Output:
+- GitHub Actions builds `dist\web` and deploys to GitHub Pages.
+
 ## Quick start (CLI)
 Input:
 C:\workspace> npm run build
