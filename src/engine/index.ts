@@ -22,6 +22,7 @@ export { applyBeachTerrain } from "./scenarios/beach.js";
 export { spawnAt, spawnRandom } from "./scenarios/spawn.js";
 export { createSaveV1, decodeUint16RleInto, encodeUint16Rle, toEntities } from "./save/v1.js";
 export type { SaveV1, SaveV1Entity } from "./save/v1.js";
+export { floraSamples, faunaSamples, getFloraSample, getFaunaSample } from "./samples/index.js";
 export {
   createEmptySoil,
   createEmptyTile,
