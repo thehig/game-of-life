@@ -118,3 +118,46 @@ export interface TileDetails {
   shade: number;
   time: SimulationTime;
 }
+
+// ---- Engine v2 (entity + layered world) ----
+
+export type EntityId = number;
+export type EntityLayer = "flora" | "fauna";
+
+export interface CameraState {
+  x: number;
+  y: number;
+  zoom: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}
+
+export interface WorldLayers {
+  width: number;
+  height: number;
+  tick: number;
+
+  // Terrain stored as palette indexes for compactness.
+  terrainPalette: TerrainId[];
+  terrain: Uint16Array;
+
+  // Per-tile layers.
+  shade: Float32Array;
+  soilFertilityBoost: Float32Array;
+  soilToxicity: Float32Array;
+
+  // Occupancy is sparse: 0 means empty.
+  floraAt: Uint32Array;
+  faunaAt: Uint32Array;
+}
+
+export type JsonObject = Record<string, unknown>;
+
+export interface Entity {
+  id: EntityId;
+  typeId: string;
+  layer: EntityLayer;
+  x: number;
+  y: number;
+  state: JsonObject;
+}
