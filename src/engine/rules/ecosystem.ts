@@ -1,0 +1,366 @@
+import {
+  DefinitionSet,
+  FaunaDefinition,
+  FaunaState,
+  FloraDefinition,
+  FloraState,
+  RuleSet,
+  Tile,
+  World
+} from "../types.js";
+import { getIndex, isInBounds } from "../world.js";
+
+const movementOffsets = [
+  [0, 0],
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0]
+] as const;
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const updateFloraState = (
+  flora: FloraState,
+  floraDef: FloraDefinition,
+  fertility: number,
+  shade: number,
+  isDay: boolean
+): FloraState => {
+  const sunlightFactor = isDay ? 1 : 0;
+  const shadePenalty = 1 - clamp(shade, 0, 1) * 0.5;
+  const growthBoost = floraDef.growthPerTick * fertility * shadePenalty * sunlightFactor;
+  const nutrition = clamp(flora.nutrition + growthBoost, 0, floraDef.maxNutrition);
+  const growth = clamp(flora.growth + growthBoost - floraDef.sunlightCost * sunlightFactor, 0, 1);
+
+  return {
+    id: flora.id,
+    nutrition,
+    age: flora.age + 1,
+    growth
+  };
+};
+
+const updateFaunaVitals = (
+  fauna: FaunaState,
+  faunaDef: FaunaDefinition
+): FaunaState | undefined => {
+  const hunger = clamp(fauna.hunger + faunaDef.hungerRate, 0, 1);
+  const energy = clamp(fauna.energy - faunaDef.metabolism, 0, 1);
+  const health = hunger >= 1 ? fauna.health - faunaDef.metabolism : fauna.health;
+
+  if (health <= 0) {
+    return undefined;
+  }
+
+  return {
+    id: fauna.id,
+    hunger,
+    energy,
+    health,
+    age: fauna.age + 1
+  };
+};
+
+const scoreHerbivoreTarget = (tile: Tile, floraDef?: FloraDefinition): number => {
+  if (!tile.flora || tile.flora.id !== "grass" || !floraDef) {
+    return 0;
+  }
+  return tile.flora.nutrition;
+};
+
+const scoreCarnivoreTarget = (tile: Tile): number => {
+  if (!tile.fauna) {
+    return 0;
+  }
+  if (tile.fauna.id === "herbivore") {
+    return 2;
+  }
+  if (tile.fauna.id === "carnivore") {
+    return 1;
+  }
+  return 0;
+};
+
+type Intent = {
+  sourceIndex: number;
+  destIndex: number;
+  score: number;
+  fauna: FaunaState;
+  faunaDef: FaunaDefinition;
+};
+
+type Resolution = {
+  intent: Intent;
+  didEat: boolean;
+};
+
+const selectDestination = (
+  world: World,
+  sourceX: number,
+  sourceY: number,
+  faunaDef: FaunaDefinition,
+  definitions: DefinitionSet
+): { destIndex: number; score: number } => {
+  let bestIndex = getIndex(world, sourceX, sourceY);
+  let bestScore = 0;
+
+  for (const [dx, dy] of movementOffsets) {
+    const x = sourceX + dx;
+    const y = sourceY + dy;
+    if (!isInBounds(world, x, y)) {
+      continue;
+    }
+    const tile = world.tiles[getIndex(world, x, y)];
+    const terrain = definitions.terrains[tile.terrainId];
+    if (!terrain.passable) {
+      continue;
+    }
+
+    let score = 0;
+    if (faunaDef.diet === "herbivore") {
+      score = scoreHerbivoreTarget(tile, definitions.flora.grass);
+    } else if (faunaDef.diet === "carnivore") {
+      score = scoreCarnivoreTarget(tile);
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = getIndex(world, x, y);
+    }
+  }
+
+  return { destIndex: bestIndex, score: bestScore };
+};
+
+const resolveIntents = (intents: Intent[]): Map<number, Resolution> => {
+  const byDest = new Map<number, Intent[]>();
+
+  for (const intent of intents) {
+    const list = byDest.get(intent.destIndex);
+    if (list) {
+      list.push(intent);
+    } else {
+      byDest.set(intent.destIndex, [intent]);
+    }
+  }
+
+  const resolved = new Map<number, Resolution>();
+
+  for (const [destIndex, group] of byDest.entries()) {
+    const sorted = [...group].sort((a, b) => {
+      if (a.score !== b.score) {
+        return b.score - a.score;
+      }
+      return a.sourceIndex - b.sourceIndex;
+    });
+
+    const winner = sorted[0];
+    const didEat =
+      winner.fauna.id === "carnivore" &&
+      sorted.slice(1).some((intent) => intent.fauna.id === "herbivore" || intent.fauna.id === "carnivore");
+
+    resolved.set(destIndex, {
+      intent: winner,
+      didEat
+    });
+  }
+
+  return resolved;
+};
+
+const applyFaunaToTile = (
+  tile: Tile,
+  fauna: FaunaState,
+  faunaDef: FaunaDefinition,
+  didEat: boolean,
+  definitions: DefinitionSet
+): { tile: Tile; fauna: FaunaState } => {
+  let updatedTile = { ...tile };
+  let updatedFauna = { ...fauna };
+
+  if (updatedTile.flora) {
+    const floraDef = definitions.flora[updatedTile.flora.id];
+    if (floraDef.trampleLoss > 0) {
+      updatedTile = {
+        ...updatedTile,
+        flora: {
+          ...updatedTile.flora,
+          nutrition: clamp(updatedTile.flora.nutrition - floraDef.trampleLoss, 0, floraDef.maxNutrition)
+        }
+      };
+    }
+  }
+
+  if (faunaDef.diet === "herbivore" && updatedTile.flora?.id === "grass") {
+    const floraDef = definitions.flora.grass;
+    const eatAmount = Math.min(updatedTile.flora.nutrition, faunaDef.eatRate);
+    updatedTile = {
+      ...updatedTile,
+      flora: {
+        ...updatedTile.flora,
+        nutrition: clamp(updatedTile.flora.nutrition - eatAmount, 0, floraDef.maxNutrition)
+      }
+    };
+    updatedFauna = {
+      ...updatedFauna,
+      hunger: clamp(updatedFauna.hunger - eatAmount, 0, 1)
+    };
+  }
+
+  if (faunaDef.diet === "carnivore" && didEat) {
+    updatedFauna = {
+      ...updatedFauna,
+      hunger: clamp(updatedFauna.hunger - faunaDef.eatRate, 0, 1)
+    };
+  }
+
+  updatedTile = {
+    ...updatedTile,
+    fauna: updatedFauna
+  };
+
+  return { tile: updatedTile, fauna: updatedFauna };
+};
+
+const applyShade = (world: World, definitions: DefinitionSet): World => {
+  const tiles = world.tiles.map((tile) => ({
+    ...tile,
+    shade: 0
+  }));
+
+  for (let y = 0; y < world.height; y += 1) {
+    for (let x = 0; x < world.width; x += 1) {
+      const index = getIndex(world, x, y);
+      const tile = world.tiles[index];
+      if (!tile.flora || tile.flora.id !== "tree") {
+        continue;
+      }
+
+      const floraDef = definitions.flora.tree;
+      const radius = Math.max(1, Math.round(floraDef.shadeRadius * tile.flora.growth));
+      const growth = clamp(tile.flora.growth, 0, 1);
+
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (!isInBounds(world, nx, ny)) {
+            continue;
+          }
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance > radius) {
+            continue;
+          }
+          const shadeValue = clamp(growth * (1 - distance / (radius + 1)), 0, 1);
+          const targetIndex = getIndex(world, nx, ny);
+          const target = tiles[targetIndex];
+
+          if (shadeValue > target.shade) {
+            tiles[targetIndex] = {
+              ...target,
+              shade: shadeValue
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    ...world,
+    tiles
+  };
+};
+
+export const ecosystemRules: RuleSet = {
+  id: "ecosystem",
+  name: "Ecosystem",
+  step: (world, context) => {
+    const isDay = context.time.phase === "day";
+    const nextTiles: Tile[] = [];
+
+    for (let y = 0; y < world.height; y += 1) {
+      for (let x = 0; x < world.width; x += 1) {
+        const index = getIndex(world, x, y);
+        const tile = world.tiles[index];
+        const terrain = context.definitions.terrains[tile.terrainId];
+        const flora = tile.flora
+          ? updateFloraState(tile.flora, context.definitions.flora[tile.flora.id], terrain.fertility, tile.shade, isDay)
+          : undefined;
+
+        nextTiles.push({
+          terrainId: tile.terrainId,
+          flora,
+          fauna: undefined,
+          shade: 0
+        });
+      }
+    }
+
+    const intents: Intent[] = [];
+
+    for (let y = 0; y < world.height; y += 1) {
+      for (let x = 0; x < world.width; x += 1) {
+        const index = getIndex(world, x, y);
+        const tile = world.tiles[index];
+
+        if (!tile.fauna) {
+          continue;
+        }
+
+        const faunaDef = context.definitions.fauna[tile.fauna.id];
+        const updated = updateFaunaVitals(tile.fauna, faunaDef);
+        if (!updated) {
+          continue;
+        }
+
+        const selection = selectDestination(world, x, y, faunaDef, context.definitions);
+
+        intents.push({
+          sourceIndex: index,
+          destIndex: selection.destIndex,
+          score: selection.score,
+          fauna: updated,
+          faunaDef
+        });
+      }
+    }
+
+    const resolved = resolveIntents(intents);
+    const occupied = new Set<number>();
+    const winners = new Set<Intent>();
+
+    for (const [destIndex, resolution] of resolved.entries()) {
+      const { intent } = resolution;
+      const tile = nextTiles[destIndex];
+      const applied = applyFaunaToTile(tile, intent.fauna, intent.faunaDef, resolution.didEat, context.definitions);
+      nextTiles[destIndex] = applied.tile;
+      occupied.add(destIndex);
+      winners.add(intent);
+    }
+
+    for (const intent of intents) {
+      if (winners.has(intent)) {
+        continue;
+      }
+      if (occupied.has(intent.sourceIndex)) {
+        continue;
+      }
+      const tile = nextTiles[intent.sourceIndex];
+      const applied = applyFaunaToTile(tile, intent.fauna, intent.faunaDef, false, context.definitions);
+      nextTiles[intent.sourceIndex] = applied.tile;
+      occupied.add(intent.sourceIndex);
+    }
+
+    const updatedWorld: World = {
+      width: world.width,
+      height: world.height,
+      tick: world.tick + 1,
+      tiles: nextTiles
+    };
+
+    return applyShade(updatedWorld, context.definitions);
+  }
+};
