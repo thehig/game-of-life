@@ -23,6 +23,37 @@ export const treeSpecies = {
     shadePerHeight: 0.6,
     deathAge: 140,
     corpseDecayRate: 0.04
+  },
+  oak: {
+    id: "oak",
+    growthRate: 0.011,
+    maxHeight: 16,
+    strength: 0.8,
+    shadePerHeight: 0.55,
+    deathAge: 120,
+    corpseDecayRate: 0.05,
+    seasonalProfile: "deciduous"
+  },
+  pine: {
+    id: "pine",
+    growthRate: 0.013,
+    maxHeight: 20,
+    strength: 0.7,
+    shadePerHeight: 0.45,
+    deathAge: 130,
+    corpseDecayRate: 0.04,
+    seasonalProfile: "evergreen"
+  },
+  willow: {
+    id: "willow",
+    growthRate: 0.015,
+    maxHeight: 14,
+    strength: 0.55,
+    shadePerHeight: 0.65,
+    deathAge: 100,
+    corpseDecayRate: 0.06,
+    seasonalProfile: "deciduous",
+    waterNeed: 0.9
   }
 };
 

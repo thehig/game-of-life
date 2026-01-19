@@ -57,4 +57,10 @@ describe("tree", () => {
     const slowShade = getShadeRadius(height, treeSpecies.slowStrong);
     expect(slowShade).toBeGreaterThan(fastShade);
   });
+
+  it("defines oak pine and willow species profiles", () => {
+    expect(treeSpecies.oak.maxHeight).toBeGreaterThan(0);
+    expect(treeSpecies.pine.seasonalProfile).toBe("evergreen");
+    expect(treeSpecies.willow.waterNeed).toBeGreaterThan(0.5);
+  });
 });
