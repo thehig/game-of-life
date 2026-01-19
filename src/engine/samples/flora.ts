@@ -93,7 +93,7 @@ type TreeSpecies = {
   waterNeed?: number;
 };
 
-const treeSpecies: Record<string, TreeSpecies> = {
+const treeSpecies = {
   oak: {
     id: "oak",
     growthRate: 0.011,
@@ -125,7 +125,7 @@ const treeSpecies: Record<string, TreeSpecies> = {
     seasonalProfile: "deciduous",
     waterNeed: 0.9
   }
-};
+} satisfies Record<string, TreeSpecies>;
 
 type FloraSample = {
   id: string;

@@ -6,13 +6,17 @@ type MovementProfile = {
   requiresShade: boolean;
 };
 
+type MovementProfileOverrides = Partial<Omit<MovementProfile, "allowedMedia">> & {
+  allowedMedia?: Iterable<string> | Set<string>;
+};
+
 const normalizeSet = (value: Iterable<string> | Set<string> | undefined, fallback: Iterable<string>): Set<string> => {
   if (value instanceof Set) return new Set(value);
   if (value) return new Set(value);
   return new Set(fallback);
 };
 
-const createMovementProfile = (overrides: Partial<MovementProfile> = {}): MovementProfile => {
+const createMovementProfile = (overrides: MovementProfileOverrides = {}): MovementProfile => {
   const base: MovementProfile = {
     baseCost: 1,
     speedCost: 0.25,
