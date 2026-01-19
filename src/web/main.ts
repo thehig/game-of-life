@@ -1,10 +1,11 @@
 import {
-  createDemoSimulation,
+  createConwaySimulation,
   getSimulationTime,
   inspectTile,
   stepSimulation
 } from "../engine/index.js";
 import { loadDefinitionsFromUrl, loadTimingFromUrl } from "./config.js";
+import { Simulation, Tile } from "../engine/types.js";
 
 type Mode = "paused" | "playing";
 
@@ -14,7 +15,7 @@ const worldHeight = 18;
 const definitionsUrl = "./config/definitions.json";
 const timingUrl = "./config/timing.json";
 
-let simulation: ReturnType<typeof createDemoSimulation> | undefined;
+let simulation: Simulation | undefined;
 let mode: Mode = "paused";
 let speedMs = 600;
 let selected = { x: 2, y: 2 };
@@ -199,6 +200,47 @@ const updateSpeed = (delta: number) => {
   renderPanel();
 };
 
+const toggleConwayCell = (x: number, y: number) => {
+  if (!simulation) {
+    return;
+  }
+  const index = y * simulation.world.width + x;
+  const tile = simulation.world.tiles[index];
+  if (!tile) {
+    return;
+  }
+  const isAlive = tile.fauna?.id === "conway";
+  const nextTile: Tile = {
+    terrainId: tile.terrainId,
+    shade: tile.shade,
+    soil: tile.soil
+  };
+
+  if (tile.flora) {
+    nextTile.flora = { ...tile.flora };
+  }
+
+  if (!isAlive) {
+    nextTile.fauna = {
+      id: "conway",
+      health: 1,
+      hunger: 0,
+      energy: 0,
+      age: 0
+    };
+  }
+
+  const tiles = [...simulation.world.tiles];
+  tiles[index] = nextTile;
+  simulation = {
+    ...simulation,
+    world: {
+      ...simulation.world,
+      tiles
+    }
+  };
+};
+
 const selectTileFromEvent = (event: MouseEvent) => {
   if (!simulation) {
     return;
@@ -214,6 +256,7 @@ const selectTileFromEvent = (event: MouseEvent) => {
     y: clamp(y, 0, simulation.world.height - 1)
   };
 
+  toggleConwayCell(selected.x, selected.y);
   render();
 };
 
@@ -229,7 +272,13 @@ const bootstrap = async () => {
     loadDefinitionsFromUrl(definitionsUrl),
     loadTimingFromUrl(timingUrl)
   ]);
-  simulation = createDemoSimulation(worldWidth, worldHeight, definitions, timing);
+  simulation = createConwaySimulation({
+    width: worldWidth,
+    height: worldHeight,
+    definitions,
+    timing,
+    terrainId: "land"
+  });
   resizeCanvas(simulation.world.width, simulation.world.height);
   render();
 };
@@ -237,3 +286,18 @@ const bootstrap = async () => {
 bootstrap().catch((error) => {
   console.error(error);
 });
+
+const enableLiveReload = () => {
+  const host = window.location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1") {
+    return;
+  }
+  const source = new EventSource("/events");
+  source.addEventListener("message", (event) => {
+    if (event.data === "reload") {
+      window.location.reload();
+    }
+  });
+};
+
+enableLiveReload();

@@ -1,5 +1,5 @@
 import readline from "node:readline";
-import { createDemoSimulation, inspectTile, renderAscii, stepSimulation } from "../engine/index.js";
+import { createConwaySimulation, inspectTile, renderAscii, stepSimulation } from "../engine/index.js";
 import { loadDefinitionsFromFile, loadTimingFromFile } from "../engine/config.node.js";
 
 type Mode = "paused" | "playing";
@@ -16,7 +16,13 @@ const run = async () => {
   const definitions = await loadDefinitionsFromFile(definitionsPath);
   const timing = await loadTimingFromFile(timingPath);
 
-  let simulation = createDemoSimulation(width, height, definitions, timing);
+  let simulation = createConwaySimulation({
+    width,
+    height,
+    definitions,
+    timing,
+    terrainId: "land"
+  });
   let mode: Mode = "paused";
   let speedMs = 600;
   let selected = { x: 2, y: 2 };
