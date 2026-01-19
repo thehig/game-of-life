@@ -1,6 +1,6 @@
 export type TerrainId = "land" | "sea" | "sand" | "dirt";
 export type FloraId = "grass" | "tree";
-export type FaunaId = "herbivore" | "carnivore" | "conway";
+export type FaunaId = "herbivore" | "carnivore" | "sheep" | "wolf" | "conway";
 export type RuleSetId = "ecosystem" | "conway";
 export type DietType = "herbivore" | "carnivore" | "omnivore";
 
@@ -54,11 +54,17 @@ export interface FaunaState {
   age: number;
 }
 
+export interface SoilState {
+  fertilityBoost: number;
+  toxicity: number;
+}
+
 export interface Tile {
   terrainId: TerrainId;
   flora?: FloraState;
   fauna?: FaunaState;
   shade: number;
+  soil: SoilState;
 }
 
 export interface World {

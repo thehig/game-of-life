@@ -46,6 +46,7 @@ export const conwayRules: RuleSet = {
           terrainId: tile.terrainId,
           flora: tile.flora ? { ...tile.flora } : undefined,
           shade: tile.shade,
+          soil: tile.soil,
           fauna: nextAlive
             ? {
                 id: "conway",

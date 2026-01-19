@@ -9,7 +9,15 @@ export { defaultDefinitions, defaultTiming } from "./definitions.js";
 export { inspectTile } from "./inspect.js";
 export { renderAscii, parseAscii } from "./serialize.js";
 export { getSimulationTime } from "./time.js";
-export { createEmptyTile, createWorld, getIndex, getTile, isInBounds, replaceTile } from "./world.js";
+export {
+  createEmptySoil,
+  createEmptyTile,
+  createWorld,
+  getIndex,
+  getTile,
+  isInBounds,
+  replaceTile
+} from "./world.js";
 export type {
   DefinitionSet,
   FaunaDefinition,
@@ -24,6 +32,7 @@ export type {
   Simulation,
   SimulationTime,
   SimulationTiming,
+  SoilState,
   TerrainDefinition,
   TerrainId,
   Tile,

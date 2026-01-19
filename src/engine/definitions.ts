@@ -63,7 +63,7 @@ export const defaultDefinitions: DefinitionSet = {
       trampleLoss: 0,
       edibleBy: ["omnivore"],
       shadeRadius: 2,
-      sunlightCost: 0.06
+      sunlightCost: 0.01
     }
   },
   fauna: {
@@ -90,6 +90,30 @@ export const defaultDefinitions: DefinitionSet = {
       metabolism: 0.08,
       hungerRate: 0.12,
       eatRate: 0.5
+    },
+    sheep: {
+      id: "sheep",
+      name: "Sheep",
+      ascii: "S",
+      color: "#f8e6b8",
+      diet: "herbivore",
+      speed: 1,
+      maxHealth: 8,
+      metabolism: 0.05,
+      hungerRate: 0.09,
+      eatRate: 0.3
+    },
+    wolf: {
+      id: "wolf",
+      name: "Wolf",
+      ascii: "W",
+      color: "#8f8f99",
+      diet: "carnivore",
+      speed: 1,
+      maxHealth: 14,
+      metabolism: 0.07,
+      hungerRate: 0.1,
+      eatRate: 0.45
     },
     conway: {
       id: "conway",

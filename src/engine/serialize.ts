@@ -65,9 +65,9 @@ export const parseAscii = (
 
       if (faunaId) {
         const faunaDef = definitions.fauna[faunaId];
+        const base = createEmptyTile(fallbackTerrain);
         tiles.push({
-          terrainId: fallbackTerrain,
-          shade: 0,
+          ...base,
           fauna: {
             id: faunaId,
             health: faunaDef.maxHealth,
@@ -78,9 +78,9 @@ export const parseAscii = (
         });
       } else if (floraId) {
         const floraDef = definitions.flora[floraId];
+        const base = createEmptyTile(fallbackTerrain);
         tiles.push({
-          terrainId: fallbackTerrain,
-          shade: 0,
+          ...base,
           flora: {
             id: floraId,
             nutrition: floraDef.maxNutrition * 0.6,

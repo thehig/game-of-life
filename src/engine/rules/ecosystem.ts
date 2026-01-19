@@ -5,6 +5,7 @@ import {
   FloraDefinition,
   FloraState,
   RuleSet,
+  SoilState,
   Tile,
   World
 } from "../types.js";
@@ -21,16 +22,50 @@ const movementOffsets = [
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
+const soilDecayRate = 0.92;
+const herbivoreSoilBoost = 0.3;
+const carnivoreSoilToxicity = 0.25;
+const omnivoreSoilBoost = 0.18;
+
+const decaySoil = (soil?: SoilState): SoilState => {
+  const current = soil ?? { fertilityBoost: 0, toxicity: 0 };
+  return {
+    fertilityBoost: clamp(current.fertilityBoost * soilDecayRate, 0, 1),
+    toxicity: clamp(current.toxicity * soilDecayRate, 0, 1)
+  };
+};
+
+const applyDecomposition = (soil: SoilState, faunaDef: FaunaDefinition): SoilState => {
+  if (faunaDef.diet === "herbivore") {
+    return {
+      ...soil,
+      fertilityBoost: clamp(soil.fertilityBoost + herbivoreSoilBoost, 0, 1)
+    };
+  }
+  if (faunaDef.diet === "carnivore") {
+    return {
+      ...soil,
+      toxicity: clamp(soil.toxicity + carnivoreSoilToxicity, 0, 1)
+    };
+  }
+  return {
+    ...soil,
+    fertilityBoost: clamp(soil.fertilityBoost + omnivoreSoilBoost, 0, 1)
+  };
+};
+
 const updateFloraState = (
   flora: FloraState,
   floraDef: FloraDefinition,
   fertility: number,
   shade: number,
-  isDay: boolean
+  isDay: boolean,
+  soil: SoilState
 ): FloraState => {
   const sunlightFactor = isDay ? 1 : 0;
   const shadePenalty = 1 - clamp(shade, 0, 1) * 0.5;
-  const growthBoost = floraDef.growthPerTick * fertility * shadePenalty * sunlightFactor;
+  const adjustedFertility = clamp(fertility + soil.fertilityBoost - soil.toxicity, 0, 1);
+  const growthBoost = floraDef.growthPerTick * adjustedFertility * shadePenalty * sunlightFactor;
   const nutrition = clamp(flora.nutrition + growthBoost, 0, floraDef.maxNutrition);
   const growth = clamp(flora.growth + growthBoost - floraDef.sunlightCost * sunlightFactor, 0, 1);
 
@@ -70,14 +105,15 @@ const scoreHerbivoreTarget = (tile: Tile, floraDef?: FloraDefinition): number =>
   return tile.flora.nutrition;
 };
 
-const scoreCarnivoreTarget = (tile: Tile): number => {
+const scoreCarnivoreTarget = (tile: Tile, definitions: DefinitionSet): number => {
   if (!tile.fauna) {
     return 0;
   }
-  if (tile.fauna.id === "herbivore") {
+  const diet = definitions.fauna[tile.fauna.id].diet;
+  if (diet === "herbivore") {
     return 2;
   }
-  if (tile.fauna.id === "carnivore") {
+  if (diet === "carnivore") {
     return 1;
   }
   return 0;
@@ -122,7 +158,7 @@ const selectDestination = (
     if (faunaDef.diet === "herbivore") {
       score = scoreHerbivoreTarget(tile, definitions.flora.grass);
     } else if (faunaDef.diet === "carnivore") {
-      score = scoreCarnivoreTarget(tile);
+      score = scoreCarnivoreTarget(tile, definitions);
     }
 
     if (score > bestScore) {
@@ -134,7 +170,10 @@ const selectDestination = (
   return { destIndex: bestIndex, score: bestScore };
 };
 
-const resolveIntents = (intents: Intent[]): Map<number, Resolution> => {
+const resolveIntents = (
+  intents: Intent[],
+  definitions: DefinitionSet
+): Map<number, Resolution> => {
   const byDest = new Map<number, Intent[]>();
 
   for (const intent of intents) {
@@ -158,8 +197,11 @@ const resolveIntents = (intents: Intent[]): Map<number, Resolution> => {
 
     const winner = sorted[0];
     const didEat =
-      winner.fauna.id === "carnivore" &&
-      sorted.slice(1).some((intent) => intent.fauna.id === "herbivore" || intent.fauna.id === "carnivore");
+      winner.faunaDef.diet === "carnivore" &&
+      sorted.slice(1).some((intent) => {
+        const diet = definitions.fauna[intent.fauna.id].diet;
+        return diet === "herbivore" || diet === "carnivore";
+      });
 
     resolved.set(destIndex, {
       intent: winner,
@@ -286,15 +328,24 @@ export const ecosystemRules: RuleSet = {
         const index = getIndex(world, x, y);
         const tile = world.tiles[index];
         const terrain = context.definitions.terrains[tile.terrainId];
+        const soil = decaySoil(tile.soil);
         const flora = tile.flora
-          ? updateFloraState(tile.flora, context.definitions.flora[tile.flora.id], terrain.fertility, tile.shade, isDay)
+          ? updateFloraState(
+              tile.flora,
+              context.definitions.flora[tile.flora.id],
+              terrain.fertility,
+              tile.shade,
+              isDay,
+              soil
+            )
           : undefined;
 
         nextTiles.push({
           terrainId: tile.terrainId,
           flora,
           fauna: undefined,
-          shade: 0
+          shade: 0,
+          soil
         });
       }
     }
@@ -313,6 +364,11 @@ export const ecosystemRules: RuleSet = {
         const faunaDef = context.definitions.fauna[tile.fauna.id];
         const updated = updateFaunaVitals(tile.fauna, faunaDef);
         if (!updated) {
+          const target = nextTiles[index];
+          nextTiles[index] = {
+            ...target,
+            soil: applyDecomposition(target.soil, faunaDef)
+          };
           continue;
         }
 
@@ -328,7 +384,7 @@ export const ecosystemRules: RuleSet = {
       }
     }
 
-    const resolved = resolveIntents(intents);
+    const resolved = resolveIntents(intents, context.definitions);
     const occupied = new Set<number>();
     const winners = new Set<Intent>();
 

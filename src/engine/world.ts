@@ -1,8 +1,14 @@
-import { Tile, TerrainId, World } from "./types.js";
+import { SoilState, Tile, TerrainId, World } from "./types.js";
+
+export const createEmptySoil = (): SoilState => ({
+  fertilityBoost: 0,
+  toxicity: 0
+});
 
 export const createEmptyTile = (terrainId: TerrainId): Tile => ({
   terrainId,
-  shade: 0
+  shade: 0,
+  soil: createEmptySoil()
 });
 
 export const createWorld = (
@@ -15,7 +21,11 @@ export const createWorld = (
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      tiles.push(tileFactory ? tileFactory(x, y) : createEmptyTile(terrainId));
+      const tile = tileFactory ? tileFactory(x, y) : createEmptyTile(terrainId);
+      tiles.push({
+        ...tile,
+        soil: tile.soil ?? createEmptySoil()
+      });
     }
   }
 
@@ -43,6 +53,7 @@ export const cloneWorld = (world: World): World => ({
   tiles: world.tiles.map((tile) => ({
     terrainId: tile.terrainId,
     shade: tile.shade,
+    soil: tile.soil ?? createEmptySoil(),
     flora: tile.flora
       ? {
           id: tile.flora.id,
