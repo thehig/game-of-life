@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deterministic Life Simulation</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="world" aria-label="Simulation grid"></canvas>
+      <aside id="panel">
+        <div class="panel-section">
+          <h2>Controls</h2>
+          <div class="controls">
+            <button id="play">Play</button>
+            <button id="pause">Pause</button>
+            <button id="step">Step</button>
+            <button id="fast">Fast</button>
+            <button id="slow">Slow</button>
+          </div>
+        </div>
+        <div class="panel-section">
+          <h2>Simulation</h2>
+          <div class="row">Tick: <span id="tick">0</span></div>
+          <div class="row">Phase: <span id="phase">day</span></div>
+          <div class="row">Speed: <span id="speed">600</span> ms</div>
+        </div>
+        <div class="panel-section">
+          <h2>Selected Tile</h2>
+          <div class="row">Position: <span id="position"></span></div>
+          <div class="row">Terrain: <span id="terrain"></span></div>
+          <div class="row">Flora: <span id="flora"></span></div>
+          <div class="row">Fauna: <span id="fauna"></span></div>
+          <div class="row">Shade: <span id="shade"></span></div>
+        </div>
+      </aside>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
