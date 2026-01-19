@@ -1,0 +1,34 @@
+{
+  "name": "deterministic-life-simulation",
+  "version": "0.1.0",
+  "description": "Deterministic life simulation engine and UI.",
+  "type": "module",
+  "main": "dist/index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/copy-web-assets.mjs",
+    "build:cli": "tsc",
+    "start:cli": "node dist/cli/index.js",
+    "start:web": "node scripts/serve-web.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thehig/game-of-life.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/thehig/game-of-life/issues"
+  },
+  "homepage": "https://github.com/thehig/game-of-life#readme",
+  "devDependencies": {
+    "@types/node": "^25.0.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  }
+}
