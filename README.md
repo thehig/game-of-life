@@ -9,6 +9,7 @@ A deterministic, data-driven life simulator with a browser UI, CLI UI, and ASCII
 - Data-driven definitions for terrain, flora, and fauna.
 - ASCII save/load format for file interchange and CLI rendering.
 - Soil effects from decomposition that enrich or poison growth.
+- Default web/CLI simulation starts in Conway mode.
 
 ## Config files (player content)
 Input:
@@ -38,12 +39,26 @@ Serving dist/web on http://localhost:5173
 
 Then open the URL in your browser.
 
+Interaction:
+- Click a tile to toggle Conway cells on/off.
+
 ## GitHub Pages deployment
 Input:
 C:\workspace> git push origin main
 
 Output:
 - GitHub Actions builds `dist\web` and deploys to GitHub Pages.
+
+## Dev mode (live reload)
+Input:
+C:\workspace> npm run dev
+
+Output:
+Dev server on http://localhost:5173
+
+Notes:
+- Changes under `src` or `config` rebuild automatically.
+- The browser auto-reloads on successful rebuilds.
 
 ## Quick start (CLI)
 Input:

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc && node scripts/copy-web-assets.mjs",
     "build:cli": "tsc",
+    "dev": "node scripts/dev.mjs",
     "start:cli": "node dist/cli/index.js",
     "start:web": "node scripts/serve-web.mjs",
     "test": "vitest run",

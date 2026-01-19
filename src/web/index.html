@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Deterministic Life Simulation</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -18,6 +19,43 @@
             <button id="step">Step</button>
             <button id="fast">Fast</button>
             <button id="slow">Slow</button>
+          </div>
+        </div>
+        <div class="panel-section">
+          <h2>Brush</h2>
+          <div class="form">
+            <label class="row">
+              Action:
+              <select id="brushAction">
+                <option value="paint">Paint</option>
+                <option value="erase">Erase</option>
+              </select>
+            </label>
+            <label class="row">
+              Type:
+              <select id="brushType">
+                <option value="conway">Conway</option>
+                <option value="sheep">Sheep</option>
+                <option value="wolf">Wolf</option>
+                <option value="grass">Grass</option>
+              </select>
+            </label>
+            <div class="hint">Tip: Drag to pan. Mouse wheel to zoom. Right-click to erase.</div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <h2>Persistence</h2>
+          <div class="form">
+            <button id="save">Save</button>
+            <label class="row">
+              Autosave:
+              <input id="autosaveEvery" type="number" min="0" step="1" value="0" />
+            </label>
+            <label class="row">
+              Load:
+              <input id="loadFile" type="file" accept="application/json" />
+            </label>
+            <div class="hint">Autosave = every N ticks (0 disables).</div>
           </div>
         </div>
         <div class="panel-section">
