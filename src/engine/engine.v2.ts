@@ -5,6 +5,7 @@ import { Rng } from "./rng.js";
 import {
   CameraState,
   DefinitionSet,
+  DietType,
   Entity,
   EntityId,
   JsonObject,
@@ -16,6 +17,20 @@ import {
 import { getSimulationTime } from "./time.js";
 import { getIndex, isInBounds, getTerrainIdAt, setTerrainIdAt } from "./world.layers.js";
 import { clampCameraToWorld } from "./camera.js";
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+const getStateNumber = (state: JsonObject, key: string, fallback: number): number => {
+  const value = state[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+};
+
+type CarcassProfile = {
+  calories: number;
+  decayRate: number;
+  fertilityPerCalorie: number;
+  toxicityPerCalorie: number;
+};
 
 export type EngineV2Options = {
   definitions: DefinitionSet;
@@ -259,6 +274,8 @@ export class EngineV2 {
     for (const intent of intents) {
       if (intent.kind === "setTerrain") {
         setTerrainIdAt(this.world, intent.x, intent.y, intent.terrainId);
+      } else if (intent.kind === "setSoil") {
+        this.applySoilDelta(intent.x, intent.y, intent.fertilityDelta, intent.toxicityDelta);
       } else if (intent.kind === "setState") {
         this.entities.setState(intent.entityId, intent.patch);
       }
@@ -296,12 +313,22 @@ export class EngineV2 {
         const destFaunaId = (this.world.faunaAt[destIdx] ?? 0) as EntityId;
         if (destFaunaId !== 0) {
           const dest = this.entities.get(destFaunaId);
-          const canEat = mover.typeId === "wolf" && dest?.typeId === "sheep";
-          if (canEat) {
-            this.despawn(destFaunaId);
-          } else {
+          if (!dest) {
             continue;
           }
+          const canEat = this.canCarnivoreEat(mover, dest);
+          if (!canEat) {
+            continue;
+          }
+          const eatResult = this.resolveCarnivoreEat(mover, dest);
+          if (eatResult.leftoverCalories > 0) {
+            this.spawnCarcassAt(
+              dest.x,
+              dest.y,
+              this.buildCarcassProfile(dest, eatResult.leftoverCalories)
+            );
+          }
+          this.despawn(destFaunaId);
         }
       } else {
         const destFloraId = (this.world.floraAt[destIdx] ?? 0) as EntityId;
@@ -322,8 +349,92 @@ export class EngineV2 {
     // Despawns (last).
     for (const intent of intents) {
       if (intent.kind !== "despawn") continue;
+      const entity = this.entities.get(intent.entityId);
+      if (entity && entity.layer === "fauna" && entity.typeId !== "conway") {
+        this.spawnCarcassAt(entity.x, entity.y, this.buildCarcassProfile(entity));
+      }
       this.despawn(intent.entityId);
     }
+  }
+
+  private applySoilDelta(x: number, y: number, fertilityDelta: number, toxicityDelta: number): void {
+    if (!isInBounds(this.world, x, y)) return;
+    const idx = getIndex(this.world, x, y);
+    const fertility = this.world.soilFertilityBoost[idx] ?? 0;
+    const toxicity = this.world.soilToxicity[idx] ?? 0;
+    this.world.soilFertilityBoost[idx] = clamp01(fertility + fertilityDelta);
+    this.world.soilToxicity[idx] = clamp01(toxicity + toxicityDelta);
+  }
+
+  private getFaunaDiet(typeId: string): DietType {
+    return this.definitions.fauna[typeId]?.diet ?? "omnivore";
+  }
+
+  private buildCarcassProfile(entity: Entity, overrideCalories?: number): CarcassProfile {
+    const energy = clamp01(getStateNumber(entity.state, "energy", 0.6));
+    const health = clamp01(getStateNumber(entity.state, "health", 0.8));
+    const hunger = clamp01(getStateNumber(entity.state, "hunger", 0.2));
+    const baseCalories = clamp01(energy + health + (1 - hunger) * 0.5) + 0.1;
+    const calories =
+      overrideCalories === undefined ? Math.max(0.2, baseCalories) : Math.max(0, overrideCalories);
+
+    const diet = this.getFaunaDiet(entity.typeId);
+    if (diet === "carnivore") {
+      return { calories, decayRate: 0.04, fertilityPerCalorie: 0.12, toxicityPerCalorie: 0.22 };
+    }
+    if (diet === "herbivore") {
+      return { calories, decayRate: 0.04, fertilityPerCalorie: 0.28, toxicityPerCalorie: 0 };
+    }
+    return { calories, decayRate: 0.04, fertilityPerCalorie: 0.2, toxicityPerCalorie: 0.05 };
+  }
+
+  private spawnCarcassAt(x: number, y: number, profile: CarcassProfile): void {
+    const module = this.modules.get("carcass");
+    if (!module || module.layer !== "flora") {
+      this.applySoilDelta(x, y, profile.calories * profile.fertilityPerCalorie, profile.calories * profile.toxicityPerCalorie);
+      return;
+    }
+    if (!isInBounds(this.world, x, y)) {
+      return;
+    }
+    const idx = getIndex(this.world, x, y);
+    if ((this.world.floraAt[idx] ?? 0) !== 0) {
+      this.applySoilDelta(x, y, profile.calories * profile.fertilityPerCalorie, profile.calories * profile.toxicityPerCalorie);
+      return;
+    }
+
+    try {
+      this.spawn("carcass", "flora", x, y, {
+        calories: profile.calories,
+        energy: profile.calories,
+        decayRate: profile.decayRate,
+        fertilityPerCalorie: profile.fertilityPerCalorie,
+        toxicityPerCalorie: profile.toxicityPerCalorie
+      });
+    } catch {
+      this.applySoilDelta(x, y, profile.calories * profile.fertilityPerCalorie, profile.calories * profile.toxicityPerCalorie);
+    }
+  }
+
+  private canCarnivoreEat(predator: Entity, prey: Entity): boolean {
+    if (predator.layer !== "fauna") return false;
+    if (predator.typeId === "conway") return false;
+    if (prey.typeId === "conway") return false;
+    const predatorDiet = this.getFaunaDiet(predator.typeId);
+    if (predatorDiet !== "carnivore") return false;
+    const preyDiet = this.getFaunaDiet(prey.typeId);
+    return preyDiet === "herbivore" || preyDiet === "omnivore";
+  }
+
+  private resolveCarnivoreEat(predator: Entity, prey: Entity): { leftoverCalories: number } {
+    const hunger = clamp01(getStateNumber(predator.state, "hunger", 0));
+    const calories = this.buildCarcassProfile(prey).calories;
+    const consumption = Math.min(calories, hunger);
+    const nextHunger = clamp01(hunger - consumption);
+    if (consumption > 0) {
+      this.entities.setState(predator.id, { hunger: nextHunger });
+    }
+    return { leftoverCalories: Math.max(0, calories - consumption) };
   }
 
   private applyConwayVotes(intents: EngineIntent[]): void {

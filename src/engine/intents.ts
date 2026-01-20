@@ -35,6 +35,14 @@ export type SetTerrainIntent = {
   terrainId: TerrainId;
 };
 
+export type SetSoilIntent = {
+  kind: "setSoil";
+  x: number;
+  y: number;
+  fertilityDelta: number;
+  toxicityDelta: number;
+};
+
 export type NeighborVoteIntent = {
   kind: "neighborVote";
   x: number;
@@ -47,5 +55,6 @@ export type EngineIntent =
   | SpawnIntent
   | SetStateIntent
   | SetTerrainIntent
+  | SetSoilIntent
   | NeighborVoteIntent;
 

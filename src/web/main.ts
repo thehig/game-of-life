@@ -457,13 +457,35 @@ const createGenericFloraModule = (id: string): CreatureModule => ({
       const energy = getStateNumber(self.state, "energy", 0.5);
       const growth = getStateNumber(self.state, "growth", 0.3);
       const tile = api.getTile(self.x, self.y);
-      const terrain = api.getDefinitions().terrains[tile?.terrainId ?? "land"];
-      const fertility = clamp(terrain?.fertility ?? 0.5, 0, 1);
-      const dayDelta = 0.015 * (0.4 + fertility);
-      const nightDelta = -0.008;
+      const getNutrition = (t: ReturnType<typeof api.getTile>): number => {
+        if (!t) return 0;
+        const terrain = api.getDefinitions().terrains[t.terrainId];
+        let nutrition = clamp((terrain?.fertility ?? 0.5) + t.soilFertilityBoost - t.soilToxicity, 0, 1);
+        if (t.floraEntityId !== 0) {
+          const flora = api.getEntity(t.floraEntityId);
+          if (flora?.typeId === "carcass") {
+            const calories = clamp(getStateNumber(flora.state, "calories", getStateNumber(flora.state, "energy", 0)), 0, 1);
+            nutrition = clamp(nutrition + calories * 0.35, 0, 1);
+          }
+        }
+        return nutrition;
+      };
+
+      const localNutrition = getNutrition(tile);
+      let maxNeighborNutrition = localNutrition;
+      for (const neighbor of api.getNeighbors(self.x, self.y, 1)) {
+        const neighborNutrition = getNutrition(neighbor);
+        if (neighborNutrition > maxNeighborNutrition) {
+          maxNeighborNutrition = neighborNutrition;
+        }
+      }
+      const gradientBoost = clamp(maxNeighborNutrition - localNutrition, 0, 1);
+
+      const dayDelta = 0.015 * (0.4 + localNutrition + gradientBoost * 0.4);
+      const nightDelta = -0.008 * (1 + (tile?.soilToxicity ?? 0));
       const delta = time.phase === "day" ? dayDelta : nightDelta;
       const nextEnergy = clamp(energy + delta, 0, 1);
-      const nextGrowth = clamp(growth + delta * 0.7, 0, 1);
+      const nextGrowth = clamp(growth + delta * 0.7 + gradientBoost * 0.002, 0, 1);
       api.emit({ kind: "setState", entityId: self.id, patch: { energy: nextEnergy, growth: nextGrowth } });
     },
     draw: (renderer, api) => {
@@ -1098,7 +1120,7 @@ const bootstrap = async () => {
   populateScenarioSelect("beach_tide");
 
   const loader = createWebCreatureLoader();
-  const baseIds = ["conway", "grass", "sheep", "wolf", "sheepdog"];
+  const baseIds = ["conway", "grass", "sheep", "wolf", "sheepdog", "carcass"];
   const baseModules = await Promise.all(baseIds.map((id) => loader(id)));
   for (const module of baseModules) {
     registerModule(module);

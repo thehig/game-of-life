@@ -54,18 +54,47 @@ const applyDecomposition = (soil: SoilState, faunaDef: FaunaDefinition): SoilSta
   };
 };
 
+const getAdjustedFertility = (fertility: number, soil: SoilState): number =>
+  clamp(fertility + soil.fertilityBoost - soil.toxicity, 0, 1);
+
+const getNutritionGradient = (
+  world: World,
+  definitions: DefinitionSet,
+  x: number,
+  y: number,
+  baseFertility: number
+): number => {
+  let maxNeighbor = baseFertility;
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!isInBounds(world, nx, ny)) continue;
+      const neighbor = world.tiles[getIndex(world, nx, ny)];
+      if (!neighbor) continue;
+      const terrain = definitions.terrains[neighbor.terrainId];
+      if (!terrain) continue;
+      const fertility = getAdjustedFertility(terrain.fertility, neighbor.soil);
+      if (fertility > maxNeighbor) {
+        maxNeighbor = fertility;
+      }
+    }
+  }
+  return clamp(maxNeighbor - baseFertility, 0, 1);
+};
+
 const updateFloraState = (
   flora: FloraState,
   floraDef: FloraDefinition,
-  fertility: number,
+  adjustedFertility: number,
+  gradientBoost: number,
   shade: number,
-  isDay: boolean,
-  soil: SoilState
+  isDay: boolean
 ): FloraState => {
   const sunlightFactor = isDay ? 1 : 0;
   const shadePenalty = 1 - clamp(shade, 0, 1) * 0.5;
-  const adjustedFertility = clamp(fertility + soil.fertilityBoost - soil.toxicity, 0, 1);
-  const growthBoost = floraDef.growthPerTick * adjustedFertility * shadePenalty * sunlightFactor;
+  const growthBoost = floraDef.growthPerTick * adjustedFertility * (1 + gradientBoost * 0.35) * shadePenalty * sunlightFactor;
   const nutrition = clamp(flora.nutrition + growthBoost, 0, floraDef.maxNutrition);
   const growth = clamp(flora.growth + growthBoost - floraDef.sunlightCost * sunlightFactor, 0, 1);
 
@@ -382,7 +411,9 @@ export const ecosystemRules: RuleSet = {
           if (!floraDef) {
             throw new Error(`Missing flora definition: ${tile.flora.id}`);
           }
-          flora = updateFloraState(tile.flora, floraDef, terrain.fertility, tile.shade, isDay, soil);
+          const adjustedFertility = getAdjustedFertility(terrain.fertility, soil);
+          const gradientBoost = getNutritionGradient(world, context.definitions, x, y, adjustedFertility);
+          flora = updateFloraState(tile.flora, floraDef, adjustedFertility, gradientBoost, tile.shade, isDay);
         }
 
         const nextTile: Tile = {

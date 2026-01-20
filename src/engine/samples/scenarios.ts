@@ -419,6 +419,41 @@ const createWolfPackScenario = (options: {
   }
 });
 
+const createCarrionScenario = (): ScenarioDefinition => ({
+  id: "carrion_cycle",
+  name: "Carrion Cycle",
+  description: "Wolves cull a herd, leaving carcasses that enrich nearby soil.",
+  setup: (engine) => {
+    resetEngineForScenario(engine);
+    const paletteIndexById = buildPaletteIndexByTerrainId(engine.world);
+    applyTerrainFill(engine.world, paletteIndexById, "land");
+    applySoilProfile(engine);
+
+    const herdRegion = clampRegion(engine, {
+      minX: Math.floor(engine.world.width * 0.25),
+      minY: Math.floor(engine.world.height * 0.25),
+      maxXExclusive: Math.floor(engine.world.width * 0.75),
+      maxYExclusive: Math.floor(engine.world.height * 0.75)
+    });
+    spawnRandom(engine, "sheep", "fauna", Math.max(20, Math.floor(engine.world.width * engine.world.height * 0.01)), herdRegion);
+    spawnByDensity(engine, "grass", "flora", 0.004);
+
+    const wolfRegion = clampRegion(engine, {
+      minX: Math.floor(engine.world.width * 0.05),
+      minY: Math.floor(engine.world.height * 0.1),
+      maxXExclusive: Math.floor(engine.world.width * 0.2),
+      maxYExclusive: Math.floor(engine.world.height * 0.9)
+    });
+    spawnRandomWithState(engine, "wolf", "fauna", 2, wolfRegion, { hunger: 0.15 });
+
+    return {
+      id: "carrion_cycle",
+      name: "Carrion Cycle",
+      description: "Wolves cull a herd, leaving carcasses that enrich nearby soil."
+    };
+  }
+});
+
 const createSoilScenario = (options: {
   id: string;
   name: string;
@@ -572,7 +607,8 @@ export const scenarioSamples: ScenarioDefinition[] = [
     description: "Two wolves share signals and converge on distant sheep.",
     wolves: 2,
     packComms: true
-  })
+  }),
+  createCarrionScenario()
 ];
 
 export const getScenarioSample = (id: string): ScenarioDefinition | null =>

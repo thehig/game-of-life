@@ -126,6 +126,14 @@ export const floraSamples = [
     seasonalProfile: "deciduous",
     waterNeed: 0.9,
     treeProfile: treeSpecies.willow
+  },
+  {
+    id: "carcass",
+    kind: "decomposer",
+    capabilities: ["decay", "soilBoost"],
+    seasonalProfile: "evergreen",
+    waterNeed: 0,
+    growthRate: 0
   }
 ];
 

@@ -105,6 +105,18 @@
       "edibleBy": ["omnivore"],
       "shadeRadius": 2,
       "sunlightCost": 0.01
+    },
+    "carcass": {
+      "id": "carcass",
+      "name": "Carcass",
+      "ascii": "x",
+      "color": "#8b5a3c",
+      "growthPerTick": 0,
+      "maxNutrition": 0.8,
+      "trampleLoss": 0.1,
+      "edibleBy": ["omnivore"],
+      "shadeRadius": 0,
+      "sunlightCost": 0.02
     }
   },
   "fauna": {
