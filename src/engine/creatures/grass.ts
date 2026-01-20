@@ -6,6 +6,26 @@ const getNumber = (value: unknown, fallback: number): number =>
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
+const toRgb = (hex: string): { r: number; g: number; b: number } => {
+  const sanitized = hex.replace("#", "");
+  const value = Number.parseInt(sanitized, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
+};
+
+const toHex = (value: number): string => value.toString(16).padStart(2, "0");
+
+const tintColor = (hex: string, factor: number): string => {
+  const { r, g, b } = toRgb(hex);
+  const clampChannel = (v: number) => Math.max(0, Math.min(255, v));
+  return `#${toHex(clampChannel(Math.round(r * factor)))}${toHex(clampChannel(Math.round(g * factor)))}${toHex(
+    clampChannel(Math.round(b * factor))
+  )}`;
+};
+
 const getTileNutrition = (
   api: Parameters<CreatureInstance["update"]>[1],
   tile: ReturnType<Parameters<CreatureInstance["update"]>[1]["getTile"]>
@@ -57,8 +77,11 @@ class GrassInstance implements CreatureInstance {
 
   public draw(renderer: Parameters<CreatureInstance["draw"]>[0], api: Parameters<CreatureInstance["draw"]>[1]): void {
     const self = api.getSelf();
-    const color = api.getDefinitions().flora["grass"]?.color ?? "#4caf50";
-    renderer.drawCell(self.x, self.y, color);
+    const baseColor = api.getDefinitions().flora["grass"]?.color ?? "#4caf50";
+    const energy = clamp01(getNumber(self.state["energy"], 0.6));
+    const growth = clamp01(getNumber(self.state["growth"], 0.4));
+    const factor = Math.max(0.5, Math.min(1.2, 0.6 + growth * 0.5 + energy * 0.2));
+    renderer.drawCell(self.x, self.y, tintColor(baseColor, factor));
   }
 }
 

@@ -490,8 +490,11 @@ const createGenericFloraModule = (id: string): CreatureModule => ({
     },
     draw: (renderer, api) => {
       const self = api.getSelf();
-      const defColor = api.getDefinitions().flora[id]?.color;
-      renderer.drawCell(self.x, self.y, defColor ?? colorFromId(id, "flora"));
+      const defColor = api.getDefinitions().flora[id]?.color ?? colorFromId(id, "flora");
+      const energy = clamp(getStateNumber(self.state, "energy", 0.5), 0, 1);
+      const growth = clamp(getStateNumber(self.state, "growth", 0.3), 0, 1);
+      const factor = clamp(0.6 + growth * 0.5 + energy * 0.2, 0.45, 1.25);
+      renderer.drawCell(self.x, self.y, adjustColor(defColor, factor));
     }
   })
 });
@@ -503,13 +506,36 @@ const createGenericFaunaModule = (id: string): CreatureModule => ({
     update: (_deltaTimeMs, api) => {
       const self = api.getSelf();
       const time = api.getTime();
+      const getRotExposure = () => {
+        let exposure = 0;
+        for (const neighbor of api.getNeighbors(self.x, self.y, 1)) {
+          if (!neighbor.floraEntityId) continue;
+          const flora = api.getEntity(neighbor.floraEntityId);
+          if (flora?.typeId !== "carcass") continue;
+          const calories = clamp(getStateNumber(flora.state, "calories", getStateNumber(flora.state, "energy", 0)), 0, 1);
+          exposure = Math.max(exposure, calories);
+        }
+        return exposure;
+      };
+
+      const rotExposure = getRotExposure();
       const hunger = clamp(getStateNumber(self.state, "hunger", 0.2) + 0.01, 0, 1);
-      const energy = clamp(getStateNumber(self.state, "energy", 1) + (time.phase === "night" ? -0.004 : -0.006), 0, 1);
-      const health = clamp(getStateNumber(self.state, "health", 1) - (hunger >= 1 ? 0.02 : 0), 0, 1);
+      const energy = clamp(
+        getStateNumber(self.state, "energy", 1) + (time.phase === "night" ? -0.004 : -0.006) - rotExposure * 0.008,
+        0,
+        1
+      );
+      const health = clamp(getStateNumber(self.state, "health", 1) - (hunger >= 1 ? 0.02 : 0) - rotExposure * 0.012, 0, 1);
+      let activity = time.phase === "night" ? "sleeping" : "roaming";
+      if (rotExposure > 0.05) {
+        activity = "sick";
+      } else if (hunger > 0.6) {
+        activity = "foraging";
+      }
       api.emit({
         kind: "setState",
         entityId: self.id,
-        patch: { hunger, energy, health, age: getStateNumber(self.state, "age", 0) + 1 }
+        patch: { hunger, energy, health, age: getStateNumber(self.state, "age", 0) + 1, activity }
       });
       if (health <= 0) {
         api.emit({ kind: "despawn", entityId: self.id });
@@ -541,6 +567,8 @@ const renderWorld = () => {
   const startY = Math.floor(current.camera.y);
   webRenderer.setViewport(startX, startY, cols, rows, cellSizePx);
 
+  const faunaOverlays: { vx: number; vy: number; entity: Entity }[] = [];
+
   for (let vy = 0; vy < rows; vy += 1) {
     for (let vx = 0; vx < cols; vx += 1) {
       const x = startX + vx;
@@ -565,11 +593,49 @@ const renderWorld = () => {
       context.fillRect(vx * cellSizePx, vy * cellSizePx, cellSizePx, cellSizePx);
       context.strokeStyle = "rgba(0, 0, 0, 0.15)";
       context.strokeRect(vx * cellSizePx, vy * cellSizePx, cellSizePx, cellSizePx);
+
+      if (fauna) {
+        faunaOverlays.push({ vx, vy, entity: fauna });
+      }
     }
   }
 
   // Creature draw overlay step (renderer-agnostic API).
   current.draw(webRenderer);
+
+  const barWidth = Math.max(6, Math.floor(cellSizePx - 4));
+  const barHeight = Math.max(2, Math.floor(cellSizePx * 0.12));
+  const barGap = Math.max(1, Math.floor(barHeight * 0.6));
+  const fontSize = Math.max(8, Math.floor(cellSizePx * 0.3));
+
+  context.font = `${fontSize}px sans-serif`;
+  context.textBaseline = "top";
+
+  for (const overlay of faunaOverlays) {
+    const energy = clamp(getStateNumber(overlay.entity.state, "energy", 0), 0, 1);
+    const health = clamp(getStateNumber(overlay.entity.state, "health", 0), 0, 1);
+    const activityRaw = overlay.entity.state["activity"];
+    const activity = typeof activityRaw === "string" ? activityRaw : "";
+
+    const baseX = overlay.vx * cellSizePx + 2;
+    const baseY = overlay.vy * cellSizePx + 2;
+
+    context.fillStyle = "rgba(0, 0, 0, 0.5)";
+    context.fillRect(baseX, baseY, barWidth, barHeight);
+    context.fillRect(baseX, baseY + barHeight + barGap, barWidth, barHeight);
+
+    context.fillStyle = "#67d06e";
+    context.fillRect(baseX, baseY, barWidth * health, barHeight);
+
+    context.fillStyle = "#6fb0ff";
+    context.fillRect(baseX, baseY + barHeight + barGap, barWidth * energy, barHeight);
+
+    if (activity) {
+      context.fillStyle = "rgba(255, 255, 255, 0.85)";
+      const textY = baseY + barHeight * 2 + barGap * 2;
+      context.fillText(activity, baseX, textY);
+    }
+  }
 
   // Selection highlight.
   context.strokeStyle = "#f5f5f5";

@@ -14,17 +14,47 @@ const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 const getNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
+const getRotExposure = (
+  api: Parameters<CreatureInstance["update"]>[1],
+  x: number,
+  y: number
+): number => {
+  let exposure = 0;
+  for (const neighbor of api.getNeighbors(x, y, 1)) {
+    if (!neighbor.floraEntityId) continue;
+    const flora = api.getEntity(neighbor.floraEntityId);
+    if (flora?.typeId !== "carcass") continue;
+    const calories = getNumber(flora.state["calories"], getNumber(flora.state["energy"], 0));
+    exposure = Math.max(exposure, clamp01(calories));
+  }
+  return exposure;
+};
+
 class SheepInstance implements CreatureInstance {
   public update(_deltaTimeMs: number, api: Parameters<CreatureInstance["update"]>[1]): void {
     const self = api.getSelf();
     const time = api.getTime();
 
     const hunger = clamp01(getNumber(self.state["hunger"], 0.2) + 0.02);
+    const rotExposure = getRotExposure(api, self.x, self.y);
     const energyDelta = time.phase === "night" ? -0.005 : -0.01;
-    const energy = clamp01(getNumber(self.state["energy"], 1) + energyDelta);
-    const health = clamp01(getNumber(self.state["health"], 1) - (hunger >= 1 ? 0.03 : 0));
+    const energyPenalty = rotExposure * 0.01;
+    const energy = clamp01(getNumber(self.state["energy"], 1) + energyDelta - energyPenalty);
+    const healthPenalty = (hunger >= 1 ? 0.03 : 0) + rotExposure * 0.02;
+    const health = clamp01(getNumber(self.state["health"], 1) - healthPenalty);
 
-    api.emit({ kind: "setState", entityId: self.id, patch: { hunger, energy, health, age: getNumber(self.state["age"], 0) + 1 } });
+    let activity = time.phase === "night" ? "sleeping" : "grazing";
+    if (rotExposure > 0.05) {
+      activity = "sick";
+    } else if (hunger > 0.4) {
+      activity = "foraging";
+    }
+
+    api.emit({
+      kind: "setState",
+      entityId: self.id,
+      patch: { hunger, energy, health, age: getNumber(self.state["age"], 0) + 1, activity }
+    });
 
     if (health <= 0) {
       api.emit({ kind: "despawn", entityId: self.id });

@@ -13,6 +13,22 @@ const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 const getNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
+const getRotExposure = (
+  api: Parameters<CreatureInstance["update"]>[1],
+  x: number,
+  y: number
+): number => {
+  let exposure = 0;
+  for (const neighbor of api.getNeighbors(x, y, 1)) {
+    if (!neighbor.floraEntityId) continue;
+    const flora = api.getEntity(neighbor.floraEntityId);
+    if (flora?.typeId !== "carcass") continue;
+    const calories = getNumber(flora.state["calories"], getNumber(flora.state["energy"], 0));
+    exposure = Math.max(exposure, clamp01(calories));
+  }
+  return exposure;
+};
+
 type Signal = { x: number; y: number; tick: number };
 
 const getSignal = (state: Record<string, unknown>): Signal | null => {
@@ -35,9 +51,12 @@ class WolfInstance implements CreatureInstance {
     const tick = api.getTick();
 
     const hunger = clamp01(getNumber(self.state["hunger"], 0.1) + 0.015);
+    const rotExposure = getRotExposure(api, self.x, self.y);
     const energyDelta = time.phase === "night" ? -0.004 : -0.012;
-    const energy = clamp01(getNumber(self.state["energy"], 1) + energyDelta);
-    const health = clamp01(getNumber(self.state["health"], 1) - (hunger >= 1 ? 0.02 : 0));
+    const energyPenalty = rotExposure * 0.008;
+    const energy = clamp01(getNumber(self.state["energy"], 1) + energyDelta - energyPenalty);
+    const healthPenalty = (hunger >= 1 ? 0.02 : 0) + rotExposure * 0.015;
+    const health = clamp01(getNumber(self.state["health"], 1) - healthPenalty);
 
     const packComms = self.state["packComms"] === true;
     const patch: Record<string, unknown> = {
@@ -47,6 +66,7 @@ class WolfInstance implements CreatureInstance {
       age: getNumber(self.state["age"], 0) + 1
     };
 
+    let activity = time.phase === "night" ? "stalking" : "hunting";
     let signalTarget: { x: number; y: number } | null = null;
 
     if (packComms) {
@@ -63,6 +83,7 @@ class WolfInstance implements CreatureInstance {
       }
       if (closestSheep) {
         signalTarget = { x: closestSheep.x, y: closestSheep.y };
+        activity = "tracking";
         patch["signalX"] = closestSheep.x;
         patch["signalY"] = closestSheep.y;
         patch["signalTick"] = tick;
@@ -83,9 +104,17 @@ class WolfInstance implements CreatureInstance {
         }
         if (closestSignal) {
           signalTarget = { x: closestSignal.x, y: closestSignal.y };
+          activity = "tracking";
         }
       }
     }
+
+    if (rotExposure > 0.05) {
+      activity = "sick";
+    } else if (hunger > 0.6) {
+      activity = "hunting";
+    }
+    patch["activity"] = activity;
 
     api.emit({ kind: "setState", entityId: self.id, patch });
 

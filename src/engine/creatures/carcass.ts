@@ -6,6 +6,26 @@ const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 const getNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
+const toRgb = (hex: string): { r: number; g: number; b: number } => {
+  const sanitized = hex.replace("#", "");
+  const value = Number.parseInt(sanitized, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
+};
+
+const toHex = (value: number): string => value.toString(16).padStart(2, "0");
+
+const tintColor = (hex: string, factor: number): string => {
+  const { r, g, b } = toRgb(hex);
+  const clampChannel = (v: number) => Math.max(0, Math.min(255, v));
+  return `#${toHex(clampChannel(Math.round(r * factor)))}${toHex(clampChannel(Math.round(g * factor)))}${toHex(
+    clampChannel(Math.round(b * factor))
+  )}`;
+};
+
 class CarcassInstance implements CreatureInstance {
   public update(_deltaTimeMs: number, api: Parameters<CreatureInstance["update"]>[1]): void {
     const self = api.getSelf();
@@ -45,8 +65,10 @@ class CarcassInstance implements CreatureInstance {
 
   public draw(renderer: Parameters<CreatureInstance["draw"]>[0], api: Parameters<CreatureInstance["draw"]>[1]): void {
     const self = api.getSelf();
-    const color = api.getDefinitions().flora["carcass"]?.color ?? "#8b5a3c";
-    renderer.drawCell(self.x, self.y, color);
+    const baseColor = api.getDefinitions().flora["carcass"]?.color ?? "#8b5a3c";
+    const calories = clamp01(getNumber(self.state["calories"], getNumber(self.state["energy"], 0.4)));
+    const factor = 0.5 + calories * 0.6;
+    renderer.drawCell(self.x, self.y, tintColor(baseColor, factor));
   }
 }
 
