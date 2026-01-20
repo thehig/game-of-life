@@ -817,7 +817,7 @@ const bootstrap = async () => {
   populateScenarioSelect("beach_tide");
 
   const loader = createWebCreatureLoader();
-  const baseIds = ["conway", "grass", "sheep", "wolf"];
+  const baseIds = ["conway", "grass", "sheep", "wolf", "sheepdog"];
   const baseModules = await Promise.all(baseIds.map((id) => loader(id)));
   for (const module of baseModules) {
     registerModule(module);
