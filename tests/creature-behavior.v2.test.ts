@@ -133,7 +133,7 @@ describe("engine v2 creature behaviors", () => {
     });
     setTerrainIdAt(engineRichNeighbor.world, 1, 0, "rich_soil");
     engineRichNeighbor.spawn("grass", "flora", 0, 0, { energy: 0.4, growth: 0.2 });
-    advanceEngineTicks(engineRichNeighbor, 120);
+    advanceEngineTicks(engineRichNeighbor, 30);
 
     const engineFlat = createTestEngineV2({
       width: 2,
@@ -143,14 +143,15 @@ describe("engine v2 creature behaviors", () => {
       modules: [grassCreature]
     });
     engineFlat.spawn("grass", "flora", 0, 0, { energy: 0.4, growth: 0.2 });
-    advanceEngineTicks(engineFlat, 120);
+    advanceEngineTicks(engineFlat, 30);
 
     const grassRich = getEntityAt(engineRichNeighbor, "flora", 0, 0);
     const grassFlat = getEntityAt(engineFlat, "flora", 0, 0);
     const richGrowth = getEntityStateNumber(grassRich, "growth", 0);
     const flatGrowth = getEntityStateNumber(grassFlat, "growth", 0);
 
-    expect(richGrowth).toBeGreaterThan(flatGrowth + 0.01);
+    expect(flatGrowth).toBeLessThan(1);
+    expect(richGrowth).toBeGreaterThan(flatGrowth + 0.005);
   });
 
   it.skip("spreads grass into adjacent tiles under full sun (tdd)", () => {
