@@ -44,8 +44,7 @@ export const applyTerrainStripes = (
   const axisLength = axis === "x" ? world.width : world.height;
   let cursor = 0;
 
-  for (let i = 0; i < stripes.length; i += 1) {
-    const stripe = stripes[i];
+  for (const [i, stripe] of stripes.entries()) {
     const normalized = clampPositive(stripe.sizeRatio) / totalRatio;
     const remaining = axisLength - cursor;
     const span = i === stripes.length - 1 ? remaining : Math.max(1, Math.floor(axisLength * normalized));

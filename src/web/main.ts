@@ -77,6 +77,7 @@ if (!context) {
 
 const webRenderer = new WebRenderer(context);
 
+const analyticsChartEl = getElement<HTMLCanvasElement>("analyticsChart");
 const chartContext = analyticsChartEl.getContext("2d");
 if (!chartContext) {
   throw new Error("Analytics chart context unavailable");
@@ -122,7 +123,6 @@ const saveButton = getElement<HTMLButtonElement>("save");
 const loadFileInput = getElement<HTMLInputElement>("loadFile");
 const autosaveEveryInput = getElement<HTMLInputElement>("autosaveEvery");
 const analyticsMetricEl = getElement<HTMLSelectElement>("analyticsMetric");
-const analyticsChartEl = getElement<HTMLCanvasElement>("analyticsChart");
 
 const creatureLayerById = new Map<string, "flora" | "fauna">();
 const loadedModules = new Map<string, CreatureModule>();
@@ -162,7 +162,7 @@ const adjustColor = (hex: string, factor: number): string => {
 const formatLabel = (value: string): string =>
   value
     .split("_")
-    .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+    .map((part) => (part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
     .join(" ");
 
 const hashString = (value: string): number => {
@@ -395,8 +395,9 @@ const renderAnalyticsChart = () => {
     chartContext.beginPath();
     const count = values.length;
     for (let i = 0; i < count; i += 1) {
+      const value = values[i] ?? 0;
       const x = padding + (i / Math.max(1, count - 1)) * (width - padding * 2);
-      const y = height - padding - (values[i] / safeMaxY) * (height - padding * 2);
+      const y = height - padding - (value / safeMaxY) * (height - padding * 2);
       if (i === 0) {
         chartContext.moveTo(x, y);
       } else {
