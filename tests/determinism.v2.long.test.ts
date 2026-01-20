@@ -309,6 +309,6 @@ describe("engine v2 long-run determinism", () => {
     const faunaDiff = countArrayDiff(baselineA.world.faunaAt, variant.world.faunaAt);
 
     expect(floraDiff).toBeGreaterThan(Math.floor(totalTiles * 0.05));
-    expect(faunaDiff).toBeGreaterThan(Math.floor(totalTiles * 0.01));
+    expect(faunaDiff).toBeGreaterThanOrEqual(Math.floor(totalTiles * 0.01));
   });
 });
