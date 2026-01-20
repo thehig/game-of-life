@@ -32,6 +32,30 @@ let selected = { x: 2, y: 2 };
 let selectedEntityId: EntityId | null = null;
 let activeScenario: ScenarioRuntime | null = null;
 let timer: number | undefined;
+let activeTab: "info" | "analytics" = "info";
+
+type AnalyticsSample = {
+  tick: number;
+  totalEnergy: number;
+  avgEnergy: number;
+  totalCalories: number;
+  floraGrowth: number;
+  floraCount: number;
+  faunaCount: number;
+  totalCount: number;
+};
+
+type CensusEntry = {
+  typeId: string;
+  layer: "flora" | "fauna";
+  count: number;
+};
+
+const analyticsHistory: AnalyticsSample[] = [];
+const maxAnalyticsPoints = 360;
+let lastAnalyticsTick = -1;
+let latestAnalytics: AnalyticsSample | null = null;
+let latestCensus: CensusEntry[] = [];
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -53,6 +77,11 @@ if (!context) {
 
 const webRenderer = new WebRenderer(context);
 
+const chartContext = analyticsChartEl.getContext("2d");
+if (!chartContext) {
+  throw new Error("Analytics chart context unavailable");
+}
+
 const tickEl = getElement<HTMLSpanElement>("tick");
 const phaseEl = getElement<HTMLSpanElement>("phase");
 const speedEl = getElement<HTMLSpanElement>("speed");
@@ -64,6 +93,19 @@ const shadeEl = getElement<HTMLSpanElement>("shade");
 const selectedEntityEl = getElement<HTMLSpanElement>("selectedEntity");
 const selectedLayerEl = getElement<HTMLSpanElement>("selectedLayer");
 const selectedVitalsEl = getElement<HTMLSpanElement>("selectedVitals");
+const metricEnergyEl = getElement<HTMLSpanElement>("metricEnergy");
+const metricEnergyAvgEl = getElement<HTMLSpanElement>("metricEnergyAvg");
+const metricCaloriesEl = getElement<HTMLSpanElement>("metricCalories");
+const metricGrowthEl = getElement<HTMLSpanElement>("metricGrowth");
+const metricPopulationEl = getElement<HTMLSpanElement>("metricPopulation");
+const metricFloraCountEl = getElement<HTMLSpanElement>("metricFloraCount");
+const metricFaunaCountEl = getElement<HTMLSpanElement>("metricFaunaCount");
+const metricCensusEl = getElement<HTMLPreElement>("metricCensus");
+
+const tabInfoEl = getElement<HTMLButtonElement>("tabInfo");
+const tabAnalyticsEl = getElement<HTMLButtonElement>("tabAnalytics");
+const tabContentInfoEl = getElement<HTMLDivElement>("tabContentInfo");
+const tabContentAnalyticsEl = getElement<HTMLDivElement>("tabContentAnalytics");
 
 const playButton = getElement<HTMLButtonElement>("play");
 const pauseButton = getElement<HTMLButtonElement>("pause");
@@ -79,6 +121,8 @@ const loadScenarioButton = getElement<HTMLButtonElement>("loadScenario");
 const saveButton = getElement<HTMLButtonElement>("save");
 const loadFileInput = getElement<HTMLInputElement>("loadFile");
 const autosaveEveryInput = getElement<HTMLInputElement>("autosaveEvery");
+const analyticsMetricEl = getElement<HTMLSelectElement>("analyticsMetric");
+const analyticsChartEl = getElement<HTMLCanvasElement>("analyticsChart");
 
 const creatureLayerById = new Map<string, "flora" | "fauna">();
 const loadedModules = new Map<string, CreatureModule>();
@@ -185,6 +229,222 @@ const buildVitalParts = (state: Record<string, unknown>): string[] => {
     }
   }
   return parts;
+};
+
+const setActiveTab = (tab: "info" | "analytics") => {
+  activeTab = tab;
+  const infoActive = tab === "info";
+  tabInfoEl.classList.toggle("active", infoActive);
+  tabAnalyticsEl.classList.toggle("active", !infoActive);
+  tabContentInfoEl.classList.toggle("active", infoActive);
+  tabContentAnalyticsEl.classList.toggle("active", !infoActive);
+};
+
+const resizeAnalyticsChart = () => {
+  const rect = analyticsChartEl.getBoundingClientRect();
+  const widthPx = Math.max(1, Math.floor(rect.width));
+  const heightPx = Math.max(1, Math.floor(rect.height));
+  const dpr = window.devicePixelRatio || 1;
+  analyticsChartEl.width = Math.floor(widthPx * dpr);
+  analyticsChartEl.height = Math.floor(heightPx * dpr);
+  chartContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+};
+
+const resetAnalytics = () => {
+  analyticsHistory.length = 0;
+  lastAnalyticsTick = -1;
+  latestAnalytics = null;
+  latestCensus = [];
+};
+
+const updateAnalytics = (current: EngineV2) => {
+  if (current.world.tick === lastAnalyticsTick && latestAnalytics) {
+    return;
+  }
+  lastAnalyticsTick = current.world.tick;
+
+  let totalEnergy = 0;
+  let floraGrowth = 0;
+  let floraCount = 0;
+  let faunaCount = 0;
+  let totalCount = 0;
+
+  const censusMap = new Map<string, CensusEntry>();
+
+  for (const id of current.entities.getAllIds()) {
+    const entity = current.entities.get(id);
+    if (!entity) continue;
+    totalCount += 1;
+    const energy = getStateNumber(entity.state, "energy", 0);
+    totalEnergy += energy;
+    if (entity.layer === "flora") {
+      floraCount += 1;
+      floraGrowth += getStateNumber(entity.state, "growth", 0);
+    } else {
+      faunaCount += 1;
+    }
+    const key = `${entity.layer}:${entity.typeId}`;
+    const existing = censusMap.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      censusMap.set(key, { typeId: entity.typeId, layer: entity.layer, count: 1 });
+    }
+  }
+
+  const totalCalories = totalEnergy + floraGrowth;
+  const avgEnergy = totalCount > 0 ? totalEnergy / totalCount : 0;
+
+  latestAnalytics = {
+    tick: current.world.tick,
+    totalEnergy,
+    avgEnergy,
+    totalCalories,
+    floraGrowth,
+    floraCount,
+    faunaCount,
+    totalCount
+  };
+  analyticsHistory.push(latestAnalytics);
+  if (analyticsHistory.length > maxAnalyticsPoints) {
+    analyticsHistory.shift();
+  }
+
+  latestCensus = [...censusMap.values()].sort((a, b) => {
+    if (a.count !== b.count) return b.count - a.count;
+    return a.typeId.localeCompare(b.typeId);
+  });
+};
+
+const renderAnalyticsChart = () => {
+  resizeAnalyticsChart();
+  chartContext.clearRect(0, 0, analyticsChartEl.width, analyticsChartEl.height);
+  const rect = analyticsChartEl.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+  const padding = 24;
+
+  if (analyticsHistory.length === 0) {
+    chartContext.fillStyle = "#7b8596";
+    chartContext.font = "12px sans-serif";
+    chartContext.fillText("No data yet", padding, height / 2);
+    return;
+  }
+
+  const metric = analyticsMetricEl.value;
+  const series: { label: string; color: string; values: number[] }[] = [];
+
+  if (metric === "population") {
+    series.push({
+      label: "total",
+      color: "#9fc5ff",
+      values: analyticsHistory.map((entry) => entry.totalCount)
+    });
+    series.push({
+      label: "flora",
+      color: "#8fe388",
+      values: analyticsHistory.map((entry) => entry.floraCount)
+    });
+    series.push({
+      label: "fauna",
+      color: "#f2b277",
+      values: analyticsHistory.map((entry) => entry.faunaCount)
+    });
+  } else if (metric === "energy") {
+    series.push({
+      label: "total",
+      color: "#9fc5ff",
+      values: analyticsHistory.map((entry) => entry.totalEnergy)
+    });
+    series.push({
+      label: "average",
+      color: "#b0f0ff",
+      values: analyticsHistory.map((entry) => entry.avgEnergy)
+    });
+  } else {
+    series.push({
+      label: "calories",
+      color: "#f7d06f",
+      values: analyticsHistory.map((entry) => entry.totalCalories)
+    });
+    series.push({
+      label: "growth",
+      color: "#8fe388",
+      values: analyticsHistory.map((entry) => entry.floraGrowth)
+    });
+  }
+
+  let maxY = 0;
+  for (const line of series) {
+    for (const value of line.values) {
+      if (value > maxY) maxY = value;
+    }
+  }
+  const safeMaxY = maxY > 0 ? maxY : 1;
+
+  chartContext.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  chartContext.lineWidth = 1;
+  chartContext.beginPath();
+  chartContext.moveTo(padding, height - padding);
+  chartContext.lineTo(width - padding, height - padding);
+  chartContext.stroke();
+
+  const drawSeries = (values: number[], color: string) => {
+    chartContext.strokeStyle = color;
+    chartContext.lineWidth = 2;
+    chartContext.beginPath();
+    const count = values.length;
+    for (let i = 0; i < count; i += 1) {
+      const x = padding + (i / Math.max(1, count - 1)) * (width - padding * 2);
+      const y = height - padding - (values[i] / safeMaxY) * (height - padding * 2);
+      if (i === 0) {
+        chartContext.moveTo(x, y);
+      } else {
+        chartContext.lineTo(x, y);
+      }
+    }
+    chartContext.stroke();
+  };
+
+  for (const line of series) {
+    drawSeries(line.values, line.color);
+  }
+
+  chartContext.fillStyle = "#7b8596";
+  chartContext.font = "11px sans-serif";
+  chartContext.fillText(`max ${formatNumber(safeMaxY)}`, padding, padding - 8);
+};
+
+const renderAnalyticsPanel = () => {
+  if (!latestAnalytics) {
+    metricEnergyEl.textContent = "0";
+    metricEnergyAvgEl.textContent = "0";
+    metricCaloriesEl.textContent = "0";
+    metricGrowthEl.textContent = "0";
+    metricPopulationEl.textContent = "0";
+    metricFloraCountEl.textContent = "0";
+    metricFaunaCountEl.textContent = "0";
+    metricCensusEl.textContent = "";
+    if (activeTab === "analytics") {
+      renderAnalyticsChart();
+    }
+    return;
+  }
+
+  metricEnergyEl.textContent = formatNumber(latestAnalytics.totalEnergy);
+  metricEnergyAvgEl.textContent = formatNumber(latestAnalytics.avgEnergy);
+  metricCaloriesEl.textContent = formatNumber(latestAnalytics.totalCalories);
+  metricGrowthEl.textContent = formatNumber(latestAnalytics.floraGrowth);
+  metricPopulationEl.textContent = latestAnalytics.totalCount.toString();
+  metricFloraCountEl.textContent = latestAnalytics.floraCount.toString();
+  metricFaunaCountEl.textContent = latestAnalytics.faunaCount.toString();
+
+  const censusLines = latestCensus.map((entry) => `${entry.typeId} (${entry.layer}): ${entry.count}`);
+  metricCensusEl.textContent = censusLines.join("\n");
+
+  if (activeTab === "analytics") {
+    renderAnalyticsChart();
+  }
 };
 
 const createGenericFloraModule = (id: string): CreatureModule => ({
@@ -369,8 +629,13 @@ const renderPanel = () => {
 };
 
 const render = () => {
+  const current = engine;
+  if (current) {
+    updateAnalytics(current);
+  }
   renderWorld();
   renderPanel();
+  renderAnalyticsPanel();
 };
 
 const downloadJson = (filename: string, data: unknown) => {
@@ -478,6 +743,7 @@ const applyScenario = (scenarioId: string) => {
   }
   activeScenario = scenario.setup(current);
   selectedEntityId = null;
+  resetAnalytics();
   setScenarioDescription(scenarioId);
   render();
 };
@@ -527,6 +793,20 @@ scenarioSelectEl.addEventListener("change", () => {
 
 loadScenarioButton.addEventListener("click", () => {
   applyScenario(scenarioSelectEl.value);
+});
+
+tabInfoEl.addEventListener("click", () => {
+  setActiveTab("info");
+  render();
+});
+
+tabAnalyticsEl.addEventListener("click", () => {
+  setActiveTab("analytics");
+  render();
+});
+
+analyticsMetricEl.addEventListener("change", () => {
+  render();
 });
 
 loadFileInput.addEventListener("change", async () => {
@@ -601,6 +881,7 @@ loadFileInput.addEventListener("change", async () => {
   engine = next;
   activeScenario = null;
   selectedEntityId = null;
+  resetAnalytics();
   if (scenarioSelectEl.querySelector('option[value="custom"]')) {
     scenarioSelectEl.value = "custom";
   }
@@ -833,6 +1114,8 @@ const bootstrap = async () => {
     }
   }
 
+  resetAnalytics();
+  setActiveTab("info");
   applyScenario(scenarioSelectEl.value);
 
   render();

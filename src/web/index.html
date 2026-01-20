@@ -11,80 +11,116 @@
     <div id="app">
       <canvas id="world" aria-label="Simulation grid"></canvas>
       <aside id="panel">
-        <div class="panel-section">
-          <h2>Controls</h2>
-          <div class="controls">
-            <button id="play">Play</button>
-            <button id="pause">Pause</button>
-            <button id="step">Step</button>
-            <button id="fast">Fast</button>
-            <button id="slow">Slow</button>
+        <div class="panel-tabs">
+          <button id="tabInfo" class="tab active" type="button">Info</button>
+          <button id="tabAnalytics" class="tab" type="button">Analytics</button>
+        </div>
+        <div id="tabContentInfo" class="tab-panel active">
+          <div class="panel-section">
+            <h2>Controls</h2>
+            <div class="controls">
+              <button id="play">Play</button>
+              <button id="pause">Pause</button>
+              <button id="step">Step</button>
+              <button id="fast">Fast</button>
+              <button id="slow">Slow</button>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Brush</h2>
+            <div class="form">
+              <label class="row">
+                Action:
+                <select id="brushAction">
+                  <option value="paint">Paint</option>
+                  <option value="select">Select</option>
+                  <option value="erase">Erase</option>
+                </select>
+              </label>
+              <label class="row">
+                Type:
+                <select id="brushType">
+                </select>
+              </label>
+              <div class="hint">Tip: Drag to pan. Mouse wheel to zoom. Right-click to erase.</div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Scenarios</h2>
+            <div class="form">
+              <label class="row">
+                Scenario:
+                <select id="scenarioSelect"></select>
+              </label>
+              <button id="loadScenario">Load Scenario</button>
+              <div id="scenarioDescription" class="hint"></div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Persistence</h2>
+            <div class="form">
+              <button id="save">Save</button>
+              <label class="row">
+                Autosave:
+                <input id="autosaveEvery" type="number" min="0" step="1" value="0" />
+              </label>
+              <label class="row">
+                Load:
+                <input id="loadFile" type="file" accept="application/json" />
+              </label>
+              <div class="hint">Autosave = every N ticks (0 disables).</div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Simulation</h2>
+            <div class="row">Tick: <span id="tick">0</span></div>
+            <div class="row">Phase: <span id="phase">day</span></div>
+            <div class="row">Speed: <span id="speed">600</span> ms</div>
+          </div>
+          <div class="panel-section">
+            <h2>Selected Tile</h2>
+            <div class="row">Position: <span id="position"></span></div>
+            <div class="row">Terrain: <span id="terrain"></span></div>
+            <div class="row">Flora: <span id="flora"></span></div>
+            <div class="row">Fauna: <span id="fauna"></span></div>
+            <div class="row">Shade: <span id="shade"></span></div>
+          </div>
+          <div class="panel-section">
+            <h2>Selected Entity</h2>
+            <div class="row">Entity: <span id="selectedEntity"></span></div>
+            <div class="row">Layer: <span id="selectedLayer"></span></div>
+            <div class="row">Vitals: <span id="selectedVitals"></span></div>
           </div>
         </div>
-        <div class="panel-section">
-          <h2>Brush</h2>
-          <div class="form">
-            <label class="row">
-              Action:
-              <select id="brushAction">
-                <option value="paint">Paint</option>
-                <option value="select">Select</option>
-                <option value="erase">Erase</option>
-              </select>
-            </label>
-            <label class="row">
-              Type:
-              <select id="brushType">
-              </select>
-            </label>
-            <div class="hint">Tip: Drag to pan. Mouse wheel to zoom. Right-click to erase.</div>
+        <div id="tabContentAnalytics" class="tab-panel">
+          <div class="panel-section">
+            <h2>Summary</h2>
+            <div class="row">Total Energy: <span id="metricEnergy"></span></div>
+            <div class="row">Average Energy: <span id="metricEnergyAvg"></span></div>
+            <div class="row">Total Calories: <span id="metricCalories"></span></div>
+            <div class="row">Flora Growth: <span id="metricGrowth"></span></div>
+            <div class="row">Population: <span id="metricPopulation"></span></div>
+            <div class="row">Flora: <span id="metricFloraCount"></span></div>
+            <div class="row">Fauna: <span id="metricFaunaCount"></span></div>
           </div>
-        </div>
-        <div class="panel-section">
-          <h2>Scenarios</h2>
-          <div class="form">
-            <label class="row">
-              Scenario:
-              <select id="scenarioSelect"></select>
-            </label>
-            <button id="loadScenario">Load Scenario</button>
-            <div id="scenarioDescription" class="hint"></div>
+          <div class="panel-section">
+            <h2>Census</h2>
+            <pre id="metricCensus" class="census"></pre>
           </div>
-        </div>
-        <div class="panel-section">
-          <h2>Persistence</h2>
-          <div class="form">
-            <button id="save">Save</button>
-            <label class="row">
-              Autosave:
-              <input id="autosaveEvery" type="number" min="0" step="1" value="0" />
-            </label>
-            <label class="row">
-              Load:
-              <input id="loadFile" type="file" accept="application/json" />
-            </label>
-            <div class="hint">Autosave = every N ticks (0 disables).</div>
+          <div class="panel-section">
+            <h2>Analytics</h2>
+            <div class="form">
+              <label class="row">
+                Metric:
+                <select id="analyticsMetric">
+                  <option value="population">Population</option>
+                  <option value="energy">Energy</option>
+                  <option value="calories">Calories</option>
+                </select>
+              </label>
+            </div>
+            <canvas id="analyticsChart" class="chart" aria-label="Analytics chart"></canvas>
           </div>
-        </div>
-        <div class="panel-section">
-          <h2>Simulation</h2>
-          <div class="row">Tick: <span id="tick">0</span></div>
-          <div class="row">Phase: <span id="phase">day</span></div>
-          <div class="row">Speed: <span id="speed">600</span> ms</div>
-        </div>
-        <div class="panel-section">
-          <h2>Selected Tile</h2>
-          <div class="row">Position: <span id="position"></span></div>
-          <div class="row">Terrain: <span id="terrain"></span></div>
-          <div class="row">Flora: <span id="flora"></span></div>
-          <div class="row">Fauna: <span id="fauna"></span></div>
-          <div class="row">Shade: <span id="shade"></span></div>
-        </div>
-        <div class="panel-section">
-          <h2>Selected Entity</h2>
-          <div class="row">Entity: <span id="selectedEntity"></span></div>
-          <div class="row">Layer: <span id="selectedLayer"></span></div>
-          <div class="row">Vitals: <span id="selectedVitals"></span></div>
         </div>
       </aside>
     </div>
