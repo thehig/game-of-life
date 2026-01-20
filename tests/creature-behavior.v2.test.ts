@@ -12,6 +12,7 @@ import {
   normalizeAscii,
   renderEngineAscii
 } from "./engineV2.helpers.js";
+import { setTerrainIdAt } from "../src/engine/index.js";
 
 let definitions: DefinitionSet;
 
@@ -119,6 +120,38 @@ describe("engine v2 creature behaviors", () => {
     expect(grass).toBeDefined();
     expect(getEntityStateNumber(grass, "energy", 1)).toBeCloseTo(0, 6);
     expect(getEntityStateNumber(grass, "growth", 1)).toBeCloseTo(0, 6);
+  });
+
+  it("boosts grass growth along nutrition gradients", () => {
+    const engineRichNeighbor = createTestEngineV2({
+      width: 2,
+      height: 1,
+      definitions,
+      timing: timingAlwaysDay,
+      modules: [grassCreature],
+      terrainIds: ["rich_soil"]
+    });
+    setTerrainIdAt(engineRichNeighbor.world, 1, 0, "rich_soil");
+    engineRichNeighbor.spawn("grass", "flora", 0, 0, { energy: 0.4, growth: 0.2 });
+    advanceEngineTicks(engineRichNeighbor, 30);
+
+    const engineFlat = createTestEngineV2({
+      width: 2,
+      height: 1,
+      definitions,
+      timing: timingAlwaysDay,
+      modules: [grassCreature]
+    });
+    engineFlat.spawn("grass", "flora", 0, 0, { energy: 0.4, growth: 0.2 });
+    advanceEngineTicks(engineFlat, 30);
+
+    const grassRich = getEntityAt(engineRichNeighbor, "flora", 0, 0);
+    const grassFlat = getEntityAt(engineFlat, "flora", 0, 0);
+    const richGrowth = getEntityStateNumber(grassRich, "growth", 0);
+    const flatGrowth = getEntityStateNumber(grassFlat, "growth", 0);
+
+    expect(flatGrowth).toBeLessThan(1);
+    expect(richGrowth).toBeGreaterThan(flatGrowth + 0.005);
   });
 
   it.skip("spreads grass into adjacent tiles under full sun (tdd)", () => {

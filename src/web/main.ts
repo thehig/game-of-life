@@ -1,11 +1,13 @@
 import {
   EngineV2,
-  applyBeachTerrain,
   buildTerrainPalette,
   createSaveV1,
   createWorldLayers,
   decodeUint16RleInto,
-  spawnRandom
+  faunaSamples,
+  floraSamples,
+  getScenarioSample,
+  scenarioSamples
 } from "../engine/index.js";
 import { createWebCreatureLoader } from "../engine/creatureLoader.js";
 import { loadDefinitionsFromUrl, loadTimingFromUrl } from "./config.js";
@@ -13,6 +15,7 @@ import { DefinitionSet, Entity, EntityId, SimulationTiming, TerrainId } from "..
 import { WebRenderer } from "./webRenderer.js";
 import { getIndex as getLayerIndex } from "../engine/world.layers.js";
 import type { CreatureModule } from "../engine/creature.js";
+import type { ScenarioRuntime } from "../engine/index.js";
 
 type Mode = "paused" | "playing";
 
@@ -26,7 +29,33 @@ let engine: EngineV2 | undefined;
 let mode: Mode = "paused";
 let speedMs = 600;
 let selected = { x: 2, y: 2 };
+let selectedEntityId: EntityId | null = null;
+let activeScenario: ScenarioRuntime | null = null;
 let timer: number | undefined;
+let activeTab: "info" | "analytics" = "info";
+
+type AnalyticsSample = {
+  tick: number;
+  totalEnergy: number;
+  avgEnergy: number;
+  totalCalories: number;
+  floraGrowth: number;
+  floraCount: number;
+  faunaCount: number;
+  totalCount: number;
+};
+
+type CensusEntry = {
+  typeId: string;
+  layer: "flora" | "fauna";
+  count: number;
+};
+
+const analyticsHistory: AnalyticsSample[] = [];
+const maxAnalyticsPoints = 360;
+let lastAnalyticsTick = -1;
+let latestAnalytics: AnalyticsSample | null = null;
+let latestCensus: CensusEntry[] = [];
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -48,6 +77,12 @@ if (!context) {
 
 const webRenderer = new WebRenderer(context);
 
+const analyticsChartEl = getElement<HTMLCanvasElement>("analyticsChart");
+const chartContext = analyticsChartEl.getContext("2d");
+if (!chartContext) {
+  throw new Error("Analytics chart context unavailable");
+}
+
 const tickEl = getElement<HTMLSpanElement>("tick");
 const phaseEl = getElement<HTMLSpanElement>("phase");
 const speedEl = getElement<HTMLSpanElement>("speed");
@@ -56,6 +91,22 @@ const terrainEl = getElement<HTMLSpanElement>("terrain");
 const floraEl = getElement<HTMLSpanElement>("flora");
 const faunaEl = getElement<HTMLSpanElement>("fauna");
 const shadeEl = getElement<HTMLSpanElement>("shade");
+const selectedEntityEl = getElement<HTMLSpanElement>("selectedEntity");
+const selectedLayerEl = getElement<HTMLSpanElement>("selectedLayer");
+const selectedVitalsEl = getElement<HTMLSpanElement>("selectedVitals");
+const metricEnergyEl = getElement<HTMLSpanElement>("metricEnergy");
+const metricEnergyAvgEl = getElement<HTMLSpanElement>("metricEnergyAvg");
+const metricCaloriesEl = getElement<HTMLSpanElement>("metricCalories");
+const metricGrowthEl = getElement<HTMLSpanElement>("metricGrowth");
+const metricPopulationEl = getElement<HTMLSpanElement>("metricPopulation");
+const metricFloraCountEl = getElement<HTMLSpanElement>("metricFloraCount");
+const metricFaunaCountEl = getElement<HTMLSpanElement>("metricFaunaCount");
+const metricCensusEl = getElement<HTMLPreElement>("metricCensus");
+
+const tabInfoEl = getElement<HTMLButtonElement>("tabInfo");
+const tabAnalyticsEl = getElement<HTMLButtonElement>("tabAnalytics");
+const tabContentInfoEl = getElement<HTMLDivElement>("tabContentInfo");
+const tabContentAnalyticsEl = getElement<HTMLDivElement>("tabContentAnalytics");
 
 const playButton = getElement<HTMLButtonElement>("play");
 const pauseButton = getElement<HTMLButtonElement>("pause");
@@ -65,9 +116,13 @@ const slowButton = getElement<HTMLButtonElement>("slow");
 
 const brushActionEl = getElement<HTMLSelectElement>("brushAction");
 const brushTypeEl = getElement<HTMLSelectElement>("brushType");
+const scenarioSelectEl = getElement<HTMLSelectElement>("scenarioSelect");
+const scenarioDescriptionEl = getElement<HTMLDivElement>("scenarioDescription");
+const loadScenarioButton = getElement<HTMLButtonElement>("loadScenario");
 const saveButton = getElement<HTMLButtonElement>("save");
 const loadFileInput = getElement<HTMLInputElement>("loadFile");
 const autosaveEveryInput = getElement<HTMLInputElement>("autosaveEvery");
+const analyticsMetricEl = getElement<HTMLSelectElement>("analyticsMetric");
 
 const creatureLayerById = new Map<string, "flora" | "fauna">();
 const loadedModules = new Map<string, CreatureModule>();
@@ -104,6 +159,39 @@ const adjustColor = (hex: string, factor: number): string => {
   return `#${toHex(next.r)}${toHex(next.g)}${toHex(next.b)}`;
 };
 
+const formatLabel = (value: string): string =>
+  value
+    .split("_")
+    .map((part) => (part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+    .join(" ");
+
+const hashString = (value: string): number => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+};
+
+const colorFromId = (id: string, layer: "flora" | "fauna"): string => {
+  const hash = hashString(`${layer}:${id}`);
+  const baseR = 60 + (hash & 0x7f);
+  const baseG = 60 + ((hash >> 7) & 0x7f);
+  const baseB = 60 + ((hash >> 14) & 0x7f);
+  const bias = layer === "flora" ? { r: -10, g: 35, b: -10 } : { r: 35, g: -10, b: -10 };
+  const r = clamp(baseR + bias.r, 0, 255);
+  const g = clamp(baseG + bias.g, 0, 255);
+  const b = clamp(baseB + bias.b, 0, 255);
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const floraLabelById = new Map<string, string>(
+  floraSamples.map((sample) => [sample.id, formatLabel(sample.id)])
+);
+const faunaLabelById = new Map<string, string>(
+  faunaSamples.map((sample) => [sample.id, formatLabel(sample.id)])
+);
+
 const getTileColor = (definitions: DefinitionSet, terrainId: TerrainId, floraId?: string, faunaId?: string): string => {
   let color = definitions.terrains[terrainId]?.color ?? "#1b1f2a";
 
@@ -124,6 +212,344 @@ const getTileColor = (definitions: DefinitionSet, terrainId: TerrainId, floraId?
   return color;
 };
 
+const getStateNumber = (state: Record<string, unknown>, key: string, fallback: number): number => {
+  const value = state[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+};
+
+const formatNumber = (value: number): string => (Number.isInteger(value) ? value.toString() : value.toFixed(2));
+
+const buildVitalParts = (state: Record<string, unknown>): string[] => {
+  const parts: string[] = [];
+  const keys = ["energy", "growth", "hunger", "health", "age", "density"];
+  for (const key of keys) {
+    const value = state[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      parts.push(`${key} ${formatNumber(value)}`);
+    }
+  }
+  return parts;
+};
+
+const setActiveTab = (tab: "info" | "analytics") => {
+  activeTab = tab;
+  const infoActive = tab === "info";
+  tabInfoEl.classList.toggle("active", infoActive);
+  tabAnalyticsEl.classList.toggle("active", !infoActive);
+  tabContentInfoEl.classList.toggle("active", infoActive);
+  tabContentAnalyticsEl.classList.toggle("active", !infoActive);
+};
+
+const resizeAnalyticsChart = () => {
+  const rect = analyticsChartEl.getBoundingClientRect();
+  const widthPx = Math.max(1, Math.floor(rect.width));
+  const heightPx = Math.max(1, Math.floor(rect.height));
+  const dpr = window.devicePixelRatio || 1;
+  analyticsChartEl.width = Math.floor(widthPx * dpr);
+  analyticsChartEl.height = Math.floor(heightPx * dpr);
+  chartContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+};
+
+const resetAnalytics = () => {
+  analyticsHistory.length = 0;
+  lastAnalyticsTick = -1;
+  latestAnalytics = null;
+  latestCensus = [];
+};
+
+const updateAnalytics = (current: EngineV2) => {
+  if (current.world.tick === lastAnalyticsTick && latestAnalytics) {
+    return;
+  }
+  lastAnalyticsTick = current.world.tick;
+
+  let totalEnergy = 0;
+  let floraGrowth = 0;
+  let floraCount = 0;
+  let faunaCount = 0;
+  let totalCount = 0;
+
+  const censusMap = new Map<string, CensusEntry>();
+
+  for (const id of current.entities.getAllIds()) {
+    const entity = current.entities.get(id);
+    if (!entity) continue;
+    totalCount += 1;
+    const energy = getStateNumber(entity.state, "energy", 0);
+    totalEnergy += energy;
+    if (entity.layer === "flora") {
+      floraCount += 1;
+      floraGrowth += getStateNumber(entity.state, "growth", 0);
+    } else {
+      faunaCount += 1;
+    }
+    const key = `${entity.layer}:${entity.typeId}`;
+    const existing = censusMap.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      censusMap.set(key, { typeId: entity.typeId, layer: entity.layer, count: 1 });
+    }
+  }
+
+  const totalCalories = totalEnergy + floraGrowth;
+  const avgEnergy = totalCount > 0 ? totalEnergy / totalCount : 0;
+
+  latestAnalytics = {
+    tick: current.world.tick,
+    totalEnergy,
+    avgEnergy,
+    totalCalories,
+    floraGrowth,
+    floraCount,
+    faunaCount,
+    totalCount
+  };
+  analyticsHistory.push(latestAnalytics);
+  if (analyticsHistory.length > maxAnalyticsPoints) {
+    analyticsHistory.shift();
+  }
+
+  latestCensus = [...censusMap.values()].sort((a, b) => {
+    if (a.count !== b.count) return b.count - a.count;
+    return a.typeId.localeCompare(b.typeId);
+  });
+};
+
+const renderAnalyticsChart = () => {
+  resizeAnalyticsChart();
+  chartContext.clearRect(0, 0, analyticsChartEl.width, analyticsChartEl.height);
+  const rect = analyticsChartEl.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+  const padding = 24;
+
+  if (analyticsHistory.length === 0) {
+    chartContext.fillStyle = "#7b8596";
+    chartContext.font = "12px sans-serif";
+    chartContext.fillText("No data yet", padding, height / 2);
+    return;
+  }
+
+  const metric = analyticsMetricEl.value;
+  const series: { label: string; color: string; values: number[] }[] = [];
+
+  if (metric === "population") {
+    series.push({
+      label: "total",
+      color: "#9fc5ff",
+      values: analyticsHistory.map((entry) => entry.totalCount)
+    });
+    series.push({
+      label: "flora",
+      color: "#8fe388",
+      values: analyticsHistory.map((entry) => entry.floraCount)
+    });
+    series.push({
+      label: "fauna",
+      color: "#f2b277",
+      values: analyticsHistory.map((entry) => entry.faunaCount)
+    });
+  } else if (metric === "energy") {
+    series.push({
+      label: "total",
+      color: "#9fc5ff",
+      values: analyticsHistory.map((entry) => entry.totalEnergy)
+    });
+    series.push({
+      label: "average",
+      color: "#b0f0ff",
+      values: analyticsHistory.map((entry) => entry.avgEnergy)
+    });
+  } else {
+    series.push({
+      label: "calories",
+      color: "#f7d06f",
+      values: analyticsHistory.map((entry) => entry.totalCalories)
+    });
+    series.push({
+      label: "growth",
+      color: "#8fe388",
+      values: analyticsHistory.map((entry) => entry.floraGrowth)
+    });
+  }
+
+  let maxY = 0;
+  for (const line of series) {
+    for (const value of line.values) {
+      if (value > maxY) maxY = value;
+    }
+  }
+  const safeMaxY = maxY > 0 ? maxY : 1;
+
+  chartContext.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  chartContext.lineWidth = 1;
+  chartContext.beginPath();
+  chartContext.moveTo(padding, height - padding);
+  chartContext.lineTo(width - padding, height - padding);
+  chartContext.stroke();
+
+  const drawSeries = (values: number[], color: string) => {
+    chartContext.strokeStyle = color;
+    chartContext.lineWidth = 2;
+    chartContext.beginPath();
+    const count = values.length;
+    for (let i = 0; i < count; i += 1) {
+      const value = values[i] ?? 0;
+      const x = padding + (i / Math.max(1, count - 1)) * (width - padding * 2);
+      const y = height - padding - (value / safeMaxY) * (height - padding * 2);
+      if (i === 0) {
+        chartContext.moveTo(x, y);
+      } else {
+        chartContext.lineTo(x, y);
+      }
+    }
+    chartContext.stroke();
+  };
+
+  for (const line of series) {
+    drawSeries(line.values, line.color);
+  }
+
+  chartContext.fillStyle = "#7b8596";
+  chartContext.font = "11px sans-serif";
+  chartContext.fillText(`max ${formatNumber(safeMaxY)}`, padding, padding - 8);
+};
+
+const renderAnalyticsPanel = () => {
+  if (!latestAnalytics) {
+    metricEnergyEl.textContent = "0";
+    metricEnergyAvgEl.textContent = "0";
+    metricCaloriesEl.textContent = "0";
+    metricGrowthEl.textContent = "0";
+    metricPopulationEl.textContent = "0";
+    metricFloraCountEl.textContent = "0";
+    metricFaunaCountEl.textContent = "0";
+    metricCensusEl.textContent = "";
+    if (activeTab === "analytics") {
+      renderAnalyticsChart();
+    }
+    return;
+  }
+
+  metricEnergyEl.textContent = formatNumber(latestAnalytics.totalEnergy);
+  metricEnergyAvgEl.textContent = formatNumber(latestAnalytics.avgEnergy);
+  metricCaloriesEl.textContent = formatNumber(latestAnalytics.totalCalories);
+  metricGrowthEl.textContent = formatNumber(latestAnalytics.floraGrowth);
+  metricPopulationEl.textContent = latestAnalytics.totalCount.toString();
+  metricFloraCountEl.textContent = latestAnalytics.floraCount.toString();
+  metricFaunaCountEl.textContent = latestAnalytics.faunaCount.toString();
+
+  const censusLines = latestCensus.map((entry) => `${entry.typeId} (${entry.layer}): ${entry.count}`);
+  metricCensusEl.textContent = censusLines.join("\n");
+
+  if (activeTab === "analytics") {
+    renderAnalyticsChart();
+  }
+};
+
+const createGenericFloraModule = (id: string): CreatureModule => ({
+  id,
+  layer: "flora",
+  spawn: () => ({
+    update: (_deltaTimeMs, api) => {
+      const self = api.getSelf();
+      const time = api.getTime();
+      const energy = getStateNumber(self.state, "energy", 0.5);
+      const growth = getStateNumber(self.state, "growth", 0.3);
+      const tile = api.getTile(self.x, self.y);
+      const getNutrition = (t: ReturnType<typeof api.getTile>): number => {
+        if (!t) return 0;
+        const terrain = api.getDefinitions().terrains[t.terrainId];
+        let nutrition = clamp((terrain?.fertility ?? 0.5) + t.soilFertilityBoost - t.soilToxicity, 0, 1);
+        if (t.floraEntityId !== 0) {
+          const flora = api.getEntity(t.floraEntityId);
+          if (flora?.typeId === "carcass") {
+            const calories = clamp(getStateNumber(flora.state, "calories", getStateNumber(flora.state, "energy", 0)), 0, 1);
+            nutrition = clamp(nutrition + calories * 0.35, 0, 1);
+          }
+        }
+        return nutrition;
+      };
+
+      const localNutrition = getNutrition(tile);
+      let maxNeighborNutrition = localNutrition;
+      for (const neighbor of api.getNeighbors(self.x, self.y, 1)) {
+        const neighborNutrition = getNutrition(neighbor);
+        if (neighborNutrition > maxNeighborNutrition) {
+          maxNeighborNutrition = neighborNutrition;
+        }
+      }
+      const gradientBoost = clamp(maxNeighborNutrition - localNutrition, 0, 1);
+
+      const dayDelta = 0.015 * (0.4 + localNutrition + gradientBoost * 0.4);
+      const nightDelta = -0.008 * (1 + (tile?.soilToxicity ?? 0));
+      const delta = time.phase === "day" ? dayDelta : nightDelta;
+      const nextEnergy = clamp(energy + delta, 0, 1);
+      const nextGrowth = clamp(growth + delta * 0.7 + gradientBoost * 0.002, 0, 1);
+      api.emit({ kind: "setState", entityId: self.id, patch: { energy: nextEnergy, growth: nextGrowth } });
+    },
+    draw: (renderer, api) => {
+      const self = api.getSelf();
+      const defColor = api.getDefinitions().flora[id]?.color ?? colorFromId(id, "flora");
+      const energy = clamp(getStateNumber(self.state, "energy", 0.5), 0, 1);
+      const growth = clamp(getStateNumber(self.state, "growth", 0.3), 0, 1);
+      const factor = clamp(0.6 + growth * 0.5 + energy * 0.2, 0.45, 1.25);
+      renderer.drawCell(self.x, self.y, adjustColor(defColor, factor));
+    }
+  })
+});
+
+const createGenericFaunaModule = (id: string): CreatureModule => ({
+  id,
+  layer: "fauna",
+  spawn: () => ({
+    update: (_deltaTimeMs, api) => {
+      const self = api.getSelf();
+      const time = api.getTime();
+      const getRotExposure = () => {
+        let exposure = 0;
+        for (const neighbor of api.getNeighbors(self.x, self.y, 1)) {
+          if (!neighbor.floraEntityId) continue;
+          const flora = api.getEntity(neighbor.floraEntityId);
+          if (flora?.typeId !== "carcass") continue;
+          const calories = clamp(getStateNumber(flora.state, "calories", getStateNumber(flora.state, "energy", 0)), 0, 1);
+          exposure = Math.max(exposure, calories);
+        }
+        return exposure;
+      };
+
+      const rotExposure = getRotExposure();
+      const hunger = clamp(getStateNumber(self.state, "hunger", 0.2) + 0.01, 0, 1);
+      const energy = clamp(
+        getStateNumber(self.state, "energy", 1) + (time.phase === "night" ? -0.004 : -0.006) - rotExposure * 0.008,
+        0,
+        1
+      );
+      const health = clamp(getStateNumber(self.state, "health", 1) - (hunger >= 1 ? 0.02 : 0) - rotExposure * 0.012, 0, 1);
+      let activity = time.phase === "night" ? "sleeping" : "roaming";
+      if (rotExposure > 0.05) {
+        activity = "sick";
+      } else if (hunger > 0.6) {
+        activity = "foraging";
+      }
+      api.emit({
+        kind: "setState",
+        entityId: self.id,
+        patch: { hunger, energy, health, age: getStateNumber(self.state, "age", 0) + 1, activity }
+      });
+      if (health <= 0) {
+        api.emit({ kind: "despawn", entityId: self.id });
+      }
+    },
+    draw: (renderer, api) => {
+      const self = api.getSelf();
+      const defColor = api.getDefinitions().fauna[id]?.color;
+      renderer.drawCell(self.x, self.y, defColor ?? colorFromId(id, "fauna"));
+    }
+  })
+});
+
 const renderWorld = () => {
   context.clearRect(0, 0, canvas.width, canvas.height);
   const current = engine;
@@ -141,6 +567,8 @@ const renderWorld = () => {
   const startX = Math.floor(current.camera.x);
   const startY = Math.floor(current.camera.y);
   webRenderer.setViewport(startX, startY, cols, rows, cellSizePx);
+
+  const faunaOverlays: { vx: number; vy: number; entity: Entity }[] = [];
 
   for (let vy = 0; vy < rows; vy += 1) {
     for (let vx = 0; vx < cols; vx += 1) {
@@ -166,11 +594,49 @@ const renderWorld = () => {
       context.fillRect(vx * cellSizePx, vy * cellSizePx, cellSizePx, cellSizePx);
       context.strokeStyle = "rgba(0, 0, 0, 0.15)";
       context.strokeRect(vx * cellSizePx, vy * cellSizePx, cellSizePx, cellSizePx);
+
+      if (fauna) {
+        faunaOverlays.push({ vx, vy, entity: fauna });
+      }
     }
   }
 
   // Creature draw overlay step (renderer-agnostic API).
   current.draw(webRenderer);
+
+  const barWidth = Math.max(6, Math.floor(cellSizePx - 4));
+  const barHeight = Math.max(2, Math.floor(cellSizePx * 0.12));
+  const barGap = Math.max(1, Math.floor(barHeight * 0.6));
+  const fontSize = Math.max(8, Math.floor(cellSizePx * 0.3));
+
+  context.font = `${fontSize}px sans-serif`;
+  context.textBaseline = "top";
+
+  for (const overlay of faunaOverlays) {
+    const energy = clamp(getStateNumber(overlay.entity.state, "energy", 0), 0, 1);
+    const health = clamp(getStateNumber(overlay.entity.state, "health", 0), 0, 1);
+    const activityRaw = overlay.entity.state["activity"];
+    const activity = typeof activityRaw === "string" ? activityRaw : "";
+
+    const baseX = overlay.vx * cellSizePx + 2;
+    const baseY = overlay.vy * cellSizePx + 2;
+
+    context.fillStyle = "rgba(0, 0, 0, 0.5)";
+    context.fillRect(baseX, baseY, barWidth, barHeight);
+    context.fillRect(baseX, baseY + barHeight + barGap, barWidth, barHeight);
+
+    context.fillStyle = "#67d06e";
+    context.fillRect(baseX, baseY, barWidth * health, barHeight);
+
+    context.fillStyle = "#6fb0ff";
+    context.fillRect(baseX, baseY + barHeight + barGap, barWidth * energy, barHeight);
+
+    if (activity) {
+      context.fillStyle = "rgba(255, 255, 255, 0.85)";
+      const textY = baseY + barHeight * 2 + barGap * 2;
+      context.fillText(activity, baseX, textY);
+    }
+  }
 
   // Selection highlight.
   context.strokeStyle = "#f5f5f5";
@@ -178,6 +644,11 @@ const renderWorld = () => {
   const sx = (selected.x - startX) * cellSizePx + 1;
   const sy = (selected.y - startY) * cellSizePx + 1;
   context.strokeRect(sx, sy, cellSizePx - 2, cellSizePx - 2);
+
+  const selectedEntity = selectedEntityId ? current.entities.get(selectedEntityId) : undefined;
+  if (selectedEntity) {
+    webRenderer.drawText(selectedEntity.x, selectedEntity.y, "*");
+  }
 };
 
 const renderPanel = () => {
@@ -202,31 +673,58 @@ const renderPanel = () => {
   const flora = floraEntityId ? current.entities.get(floraEntityId) : undefined;
   const fauna = faunaEntityId ? current.entities.get(faunaEntityId) : undefined;
 
-  const floraName = flora ? current.definitions.flora[flora.typeId]?.name ?? flora.typeId : "None";
-  const faunaName = fauna ? current.definitions.fauna[fauna.typeId]?.name ?? fauna.typeId : "None";
-
-  const formatVitals = (entityType: "flora" | "fauna", entityId: EntityId): string => {
-    const entity = current.entities.get(entityId);
-    if (!entity) return "";
-    const energy = entity.state["energy"];
-    const hunger = entity.state["hunger"];
-    const health = entity.state["health"];
-    const extras: string[] = [];
-    if (typeof energy === "number") extras.push(`energy ${energy.toFixed(2)}`);
-    if (typeof hunger === "number") extras.push(`hunger ${hunger.toFixed(2)}`);
-    if (typeof health === "number") extras.push(`health ${health.toFixed(2)}`);
-    if (extras.length === 0) return "";
-    return ` (${extras.join(", ")})`;
+  const getEntityLabel = (layer: "flora" | "fauna", typeId: string): string => {
+    if (layer === "flora") {
+      return current.definitions.flora[typeId]?.name ?? floraLabelById.get(typeId) ?? typeId;
+    }
+    return current.definitions.fauna[typeId]?.name ?? faunaLabelById.get(typeId) ?? typeId;
   };
 
-  floraEl.textContent = floraEntityId ? `${floraName}${formatVitals("flora", floraEntityId)}` : floraName;
-  faunaEl.textContent = faunaEntityId ? `${faunaName}${formatVitals("fauna", faunaEntityId)}` : faunaName;
+  const formatInlineVitals = (entity: Entity | undefined): string => {
+    if (!entity) return "";
+    const parts = buildVitalParts(entity.state);
+    return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
+  };
+
+  const markSelected = (entityId: EntityId | 0): string =>
+    entityId !== 0 && entityId === selectedEntityId ? " *" : "";
+
+  const floraName = flora ? getEntityLabel("flora", flora.typeId) : "None";
+  const faunaName = fauna ? getEntityLabel("fauna", fauna.typeId) : "None";
+
+  floraEl.textContent = floraEntityId
+    ? `${floraName}${markSelected(floraEntityId)}${formatInlineVitals(flora)}`
+    : floraName;
+  faunaEl.textContent = faunaEntityId
+    ? `${faunaName}${markSelected(faunaEntityId)}${formatInlineVitals(fauna)}`
+    : faunaName;
   shadeEl.textContent = (current.world.shade[tileIdx] ?? 0).toFixed(2);
+
+  let selectedEntity: Entity | undefined;
+  if (selectedEntityId) {
+    selectedEntity = current.entities.get(selectedEntityId) ?? undefined;
+  }
+  if (!selectedEntity) {
+    selectedEntityId = null;
+    selectedEntityEl.textContent = "None";
+    selectedLayerEl.textContent = "-";
+    selectedVitalsEl.textContent = "";
+  } else {
+    selectedEntityEl.textContent = getEntityLabel(selectedEntity.layer, selectedEntity.typeId);
+    selectedLayerEl.textContent = selectedEntity.layer;
+    const parts = buildVitalParts(selectedEntity.state);
+    selectedVitalsEl.textContent = parts.length === 0 ? "None" : parts.join(", ");
+  }
 };
 
 const render = () => {
+  const current = engine;
+  if (current) {
+    updateAnalytics(current);
+  }
   renderWorld();
   renderPanel();
+  renderAnalyticsPanel();
 };
 
 const downloadJson = (filename: string, data: unknown) => {
@@ -237,6 +735,106 @@ const downloadJson = (filename: string, data: unknown) => {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+};
+
+const registerModule = (module: CreatureModule) => {
+  const current = engine;
+  if (!current) return;
+  current.registerModule(module);
+  loadedModules.set(module.id, module);
+  creatureLayerById.set(module.id, module.layer);
+};
+
+const populateBrushTypes = () => {
+  creatureLayerById.clear();
+  brushTypeEl.innerHTML = "";
+
+  const addOption = (group: HTMLOptGroupElement, id: string, label: string) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = label;
+    group.appendChild(option);
+  };
+
+  const specialGroup = document.createElement("optgroup");
+  specialGroup.label = "Special";
+  addOption(specialGroup, "conway", "Conway");
+  brushTypeEl.appendChild(specialGroup);
+  creatureLayerById.set("conway", "fauna");
+
+  const floraGroup = document.createElement("optgroup");
+  floraGroup.label = "Flora";
+  for (const sample of floraSamples) {
+    addOption(floraGroup, sample.id, floraLabelById.get(sample.id) ?? sample.id);
+    creatureLayerById.set(sample.id, "flora");
+  }
+  brushTypeEl.appendChild(floraGroup);
+
+  const faunaGroup = document.createElement("optgroup");
+  faunaGroup.label = "Fauna";
+  for (const sample of faunaSamples) {
+    addOption(faunaGroup, sample.id, faunaLabelById.get(sample.id) ?? sample.id);
+    creatureLayerById.set(sample.id, "fauna");
+  }
+  brushTypeEl.appendChild(faunaGroup);
+
+  if (brushTypeEl.querySelector('option[value="grass"]')) {
+    brushTypeEl.value = "grass";
+  } else if (brushTypeEl.options.length > 0) {
+    brushTypeEl.selectedIndex = 0;
+  }
+};
+
+const setScenarioDescription = (scenarioId: string) => {
+  if (scenarioId === "custom") {
+    scenarioDescriptionEl.textContent = "Custom world state (no scenario updates).";
+    return;
+  }
+  const scenario = getScenarioSample(scenarioId);
+  scenarioDescriptionEl.textContent = scenario?.description ?? "";
+};
+
+const populateScenarioSelect = (defaultScenarioId: string) => {
+  scenarioSelectEl.innerHTML = "";
+  const customOption = document.createElement("option");
+  customOption.value = "custom";
+  customOption.textContent = "Custom";
+  scenarioSelectEl.appendChild(customOption);
+  for (const scenario of scenarioSamples) {
+    const option = document.createElement("option");
+    option.value = scenario.id;
+    option.textContent = scenario.name;
+    scenarioSelectEl.appendChild(option);
+  }
+  if (scenarioSelectEl.querySelector(`option[value="${defaultScenarioId}"]`)) {
+    scenarioSelectEl.value = defaultScenarioId;
+  } else {
+    scenarioSelectEl.value = "custom";
+  }
+  setScenarioDescription(scenarioSelectEl.value);
+};
+
+const applyScenario = (scenarioId: string) => {
+  const current = engine;
+  if (!current) return;
+  if (scenarioId === "custom") {
+    activeScenario = null;
+    setScenarioDescription("custom");
+    render();
+    return;
+  }
+  const scenario = getScenarioSample(scenarioId);
+  if (!scenario) {
+    activeScenario = null;
+    setScenarioDescription("custom");
+    render();
+    return;
+  }
+  activeScenario = scenario.setup(current);
+  selectedEntityId = null;
+  resetAnalytics();
+  setScenarioDescription(scenarioId);
+  render();
 };
 
 const setMode = (nextMode: Mode) => {
@@ -252,6 +850,9 @@ const setMode = (nextMode: Mode) => {
         return;
       }
       currentEngine.step(speedMs);
+      if (activeScenario?.update) {
+        activeScenario.update(currentEngine);
+      }
       render();
     }, speedMs);
   }
@@ -273,6 +874,28 @@ autosaveEveryInput.addEventListener("change", () => {
     const save = createSaveV1(eng);
     downloadJson(`life-autosave-tick-${save.tick}.json`, save);
   });
+});
+
+scenarioSelectEl.addEventListener("change", () => {
+  setScenarioDescription(scenarioSelectEl.value);
+});
+
+loadScenarioButton.addEventListener("click", () => {
+  applyScenario(scenarioSelectEl.value);
+});
+
+tabInfoEl.addEventListener("click", () => {
+  setActiveTab("info");
+  render();
+});
+
+tabAnalyticsEl.addEventListener("click", () => {
+  setActiveTab("analytics");
+  render();
+});
+
+analyticsMetricEl.addEventListener("change", () => {
+  render();
 });
 
 loadFileInput.addEventListener("change", async () => {
@@ -345,6 +968,13 @@ loadFileInput.addEventListener("change", async () => {
   }
 
   engine = next;
+  activeScenario = null;
+  selectedEntityId = null;
+  resetAnalytics();
+  if (scenarioSelectEl.querySelector('option[value="custom"]')) {
+    scenarioSelectEl.value = "custom";
+  }
+  scenarioDescriptionEl.textContent = "Loaded save (custom).";
   render();
 });
 
@@ -353,6 +983,9 @@ const stepOnce = () => {
     return;
   }
   engine.step(speedMs);
+  if (activeScenario?.update) {
+    activeScenario.update(engine);
+  }
   render();
 };
 
@@ -362,6 +995,23 @@ const updateSpeed = (delta: number) => {
     setMode("playing");
   }
   renderPanel();
+};
+
+const selectEntityAt = (x: number, y: number) => {
+  const current = engine;
+  if (!current) return;
+  const idx = getLayerIndex(current.world, x, y);
+  const faunaId = (current.world.faunaAt[idx] ?? 0) as EntityId;
+  const floraId = (current.world.floraAt[idx] ?? 0) as EntityId;
+  if (faunaId) {
+    selectedEntityId = faunaId;
+    return;
+  }
+  if (floraId) {
+    selectedEntityId = floraId;
+    return;
+  }
+  selectedEntityId = null;
 };
 
 const applyBrush = (x: number, y: number, opts?: { forceErase?: boolean }) => {
@@ -376,9 +1026,17 @@ const applyBrush = (x: number, y: number, opts?: { forceErase?: boolean }) => {
   const brushType = brushTypeEl.value;
   const layer = creatureLayerById.get(brushType);
 
+  if (action === "select") {
+    selectEntityAt(x, y);
+    return;
+  }
+
   if (action === "erase" || !layer) {
     if (faunaId) current.despawn(faunaId);
     if (floraId) current.despawn(floraId);
+    if (selectedEntityId === faunaId || selectedEntityId === floraId) {
+      selectedEntityId = null;
+    }
     return;
   }
 
@@ -387,9 +1045,15 @@ const applyBrush = (x: number, y: number, opts?: { forceErase?: boolean }) => {
       const existing = current.entities.get(faunaId);
       if (existing?.typeId === brushType) {
         current.despawn(faunaId);
+        if (selectedEntityId === faunaId) {
+          selectedEntityId = null;
+        }
         return;
       }
       current.despawn(faunaId);
+      if (selectedEntityId === faunaId) {
+        selectedEntityId = null;
+      }
     }
     try {
       current.spawn(brushType, "fauna", x, y, {});
@@ -402,10 +1066,16 @@ const applyBrush = (x: number, y: number, opts?: { forceErase?: boolean }) => {
   if (floraId) {
     const existing = current.entities.get(floraId);
     if (existing?.typeId === brushType) {
-      current.despawn(floraId);
+    current.despawn(floraId);
+    if (selectedEntityId === floraId) {
+      selectedEntityId = null;
+    }
       return;
     }
     current.despawn(floraId);
+  if (selectedEntityId === floraId) {
+    selectedEntityId = null;
+  }
   }
   try {
     current.spawn(brushType, "flora", x, y, {});
@@ -505,12 +1175,6 @@ const bootstrap = async () => {
     defaultTerrainIndex
   });
 
-  const paletteIndexById = new Map<TerrainId, number>();
-  for (let i = 0; i < palette.length; i += 1) {
-    paletteIndexById.set(palette[i] ?? "land", i);
-  }
-  applyBeachTerrain(world, paletteIndexById, { leftLandRatio: 0.22, rightSeaRatio: 0.22 });
-
   engine = new EngineV2({
     definitions,
     timing,
@@ -519,35 +1183,29 @@ const bootstrap = async () => {
     camera: { x: 0, y: 0, zoom: 1 }
   });
 
+  populateBrushTypes();
+  populateScenarioSelect("beach_tide");
+
   const loader = createWebCreatureLoader();
-  const [conway, grass, sheep, wolf] = await Promise.all([
-    loader("conway"),
-    loader("grass"),
-    loader("sheep"),
-    loader("wolf")
-  ]);
-  engine.registerModule(conway);
-  engine.registerModule(grass);
-  engine.registerModule(sheep);
-  engine.registerModule(wolf);
-  loadedModules.set("conway", conway);
-  loadedModules.set("grass", grass);
-  loadedModules.set("sheep", sheep);
-  loadedModules.set("wolf", wolf);
+  const baseIds = ["conway", "grass", "sheep", "wolf", "sheepdog", "carcass"];
+  const baseModules = await Promise.all(baseIds.map((id) => loader(id)));
+  for (const module of baseModules) {
+    registerModule(module);
+  }
+  for (const sample of floraSamples) {
+    if (!loadedModules.has(sample.id)) {
+      registerModule(createGenericFloraModule(sample.id));
+    }
+  }
+  for (const sample of faunaSamples) {
+    if (!loadedModules.has(sample.id)) {
+      registerModule(createGenericFaunaModule(sample.id));
+    }
+  }
 
-  creatureLayerById.set("conway", "fauna");
-  creatureLayerById.set("sheep", "fauna");
-  creatureLayerById.set("wolf", "fauna");
-  creatureLayerById.set("grass", "flora");
-
-  // Scenario: grass on left land band, creatures everywhere but sea.
-  const rightSeaStart = Math.floor(worldWidth * (1 - 0.22));
-  const leftLandEnd = Math.floor(worldWidth * 0.22);
-
-  spawnRandom(engine, "grass", "flora", 5000, { minX: 0, minY: 0, maxXExclusive: leftLandEnd, maxYExclusive: worldHeight });
-  spawnRandom(engine, "sheep", "fauna", 30, { minX: 0, minY: 0, maxXExclusive: leftLandEnd, maxYExclusive: worldHeight });
-  spawnRandom(engine, "wolf", "fauna", 3, { minX: leftLandEnd, minY: 0, maxXExclusive: rightSeaStart, maxYExclusive: worldHeight });
-  spawnRandom(engine, "conway", "fauna", 30, { minX: 0, minY: 0, maxXExclusive: rightSeaStart, maxYExclusive: worldHeight });
+  resetAnalytics();
+  setActiveTab("info");
+  applyScenario(scenarioSelectEl.value);
 
   render();
 };

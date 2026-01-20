@@ -1,5 +1,4 @@
 import { CreatureInstance, CreatureModule } from "../creature.js";
-import { EngineIntent } from "../intents.js";
 
 const movementOffsets = [
   [0, 0],
@@ -30,23 +29,31 @@ const getRotExposure = (
   return exposure;
 };
 
-class SheepInstance implements CreatureInstance {
+type Target = { x: number; y: number; distance: number };
+
+const pickCloser = (current: Target | null, next: Target): Target => {
+  if (!current) return next;
+  if (next.distance < current.distance) return next;
+  return current;
+};
+
+class SheepdogInstance implements CreatureInstance {
   public update(_deltaTimeMs: number, api: Parameters<CreatureInstance["update"]>[1]): void {
     const self = api.getSelf();
     const time = api.getTime();
 
-    const hunger = clamp01(getNumber(self.state["hunger"], 0.2) + 0.02);
+    const hunger = clamp01(getNumber(self.state["hunger"], 0.15) + 0.01);
     const rotExposure = getRotExposure(api, self.x, self.y);
-    const energyDelta = time.phase === "night" ? -0.005 : -0.01;
+    const energyDelta = time.phase === "night" ? -0.004 : -0.008;
     const energyPenalty = rotExposure * 0.01;
     const energy = clamp01(getNumber(self.state["energy"], 1) + energyDelta - energyPenalty);
-    const healthPenalty = (hunger >= 1 ? 0.03 : 0) + rotExposure * 0.02;
+    const healthPenalty = (hunger >= 1 ? 0.02 : 0) + rotExposure * 0.02;
     const health = clamp01(getNumber(self.state["health"], 1) - healthPenalty);
 
-    let activity = time.phase === "night" ? "sleeping" : "grazing";
+    let activity = time.phase === "night" ? "resting" : "guarding";
     if (rotExposure > 0.05) {
       activity = "sick";
-    } else if (hunger > 0.4) {
+    } else if (hunger > 0.5) {
       activity = "foraging";
     }
 
@@ -61,10 +68,28 @@ class SheepInstance implements CreatureInstance {
       return;
     }
 
-    // Decide movement (radius 1, cardinal + stay). Prefer grass tiles when hungry.
+    const neighbors = api.getNeighbors(self.x, self.y, 4);
+    let nearestWolf: Target | null = null;
+    let nearestSheep: Target | null = null;
+
+    for (const tile of neighbors) {
+      if (!tile.faunaEntityId || tile.faunaEntityId === self.id) continue;
+      const entity = api.getEntity(tile.faunaEntityId);
+      if (!entity) continue;
+      const distance = Math.abs(entity.x - self.x) + Math.abs(entity.y - self.y);
+      if (entity.typeId === "wolf") {
+        nearestWolf = pickCloser(nearestWolf, { x: entity.x, y: entity.y, distance });
+      } else if (entity.typeId === "sheep") {
+        nearestSheep = pickCloser(nearestSheep, { x: entity.x, y: entity.y, distance });
+      }
+    }
+
+    const target = nearestWolf ?? nearestSheep;
+    const intentBias = nearestWolf ? 4 : 2;
+
     let bestX = self.x;
     let bestY = self.y;
-    let bestScore = -1;
+    let bestScore = -Infinity;
 
     for (const [dx, dy] of movementOffsets) {
       const x = self.x + dx;
@@ -74,13 +99,10 @@ class SheepInstance implements CreatureInstance {
       if (!tile) continue;
       if (tile.faunaEntityId !== 0 && tile.faunaEntityId !== self.id) continue;
 
-      let score = api.rngFloat() * 0.01; // deterministic tie noise
-
-      if (hunger > 0.4 && tile.floraEntityId !== 0) {
-        const flora = api.getEntity(tile.floraEntityId);
-        if (flora?.typeId === "grass") {
-          score += 2;
-        }
+      let score = api.rngFloat() * 0.01;
+      if (target) {
+        const distance = Math.abs(target.x - x) + Math.abs(target.y - y);
+        score += intentBias - distance;
       }
 
       if (score > bestScore) {
@@ -97,14 +119,13 @@ class SheepInstance implements CreatureInstance {
 
   public draw(renderer: Parameters<CreatureInstance["draw"]>[0], api: Parameters<CreatureInstance["draw"]>[1]): void {
     const self = api.getSelf();
-    const color = api.getDefinitions().fauna["sheep"]?.color ?? "#f8e6b8";
+    const color = api.getDefinitions().fauna["sheepdog"]?.color ?? "#b7a28c";
     renderer.drawCell(self.x, self.y, color);
   }
 }
 
 export const creature: CreatureModule = {
-  id: "sheep",
+  id: "sheepdog",
   layer: "fauna",
-  spawn: () => new SheepInstance()
+  spawn: () => new SheepdogInstance()
 };
-

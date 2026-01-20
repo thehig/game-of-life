@@ -19,10 +19,21 @@ export { createNodeCreatureLoader, createWebCreatureLoader } from "./creatureLoa
 export { Rng } from "./rng.js";
 export { CliRenderer } from "./renderers/cliRenderer.js";
 export { applyBeachTerrain } from "./scenarios/beach.js";
+export { applyTerrainFill, applyTerrainStripes } from "./scenarios/terrain.js";
 export { spawnAt, spawnRandom } from "./scenarios/spawn.js";
+export type { ScenarioDefinition, ScenarioRuntime } from "./scenarios/types.js";
 export { createSaveV1, decodeUint16RleInto, encodeUint16Rle, toEntities } from "./save/v1.js";
 export type { SaveV1, SaveV1Entity } from "./save/v1.js";
-export { floraSamples, faunaSamples, getFloraSample, getFaunaSample } from "./samples/index.js";
+export {
+  floraSamples,
+  faunaSamples,
+  terrainSamples,
+  scenarioSamples,
+  getFloraSample,
+  getFaunaSample,
+  getTerrainSample,
+  getScenarioSample
+} from "./samples/index.js";
 export {
   createEmptySoil,
   createEmptyTile,
